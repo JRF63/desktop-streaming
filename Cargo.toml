@@ -1,0 +1,2 @@
+[workspace]
+members = ["nvenc-windows", "server-windows"]
