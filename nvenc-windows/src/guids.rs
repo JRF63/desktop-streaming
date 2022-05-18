@@ -45,3 +45,89 @@ pub const fn guid_from_u128(uuid: u128) -> nvenc_sys::GUID {
         Data4: (uuid as u64).to_be_bytes(),
     }
 }
+
+#[derive(Debug, Copy, Clone)]
+pub enum Codec {
+    H264,
+    Hevc,
+}
+
+impl Codec {
+    pub(crate) fn to_guid(self) -> nvenc_sys::GUID {
+        match self {
+            Codec::H264 => NV_ENC_CODEC_H264_GUID,
+            Codec::Hevc => NV_ENC_CODEC_HEVC_GUID,
+        }
+    }
+
+    pub(crate) fn from_guid(guid: nvenc_sys::GUID) -> Self {
+        if guid == NV_ENC_CODEC_H264_GUID {
+            Codec::H264
+        } else if guid == NV_ENC_CODEC_HEVC_GUID {
+            Codec::Hevc
+        } else {
+            panic!("Invalid codec guid")
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum CodecProfile {
+    Autoselect,
+    H264Baseline,
+    H264Main,
+    H264High,
+    H264High444,
+    H264Stereo,
+    H264ProgressiveHigh,
+    H264ConstrainedHigh,
+    HevcMain,
+    HevcMain10,
+    HevcFrext,
+}
+
+impl CodecProfile {
+    pub(crate) fn to_guid(self) -> nvenc_sys::GUID {
+        match self {
+            CodecProfile::Autoselect => NV_ENC_CODEC_PROFILE_AUTOSELECT_GUID,
+            CodecProfile::H264Baseline => NV_ENC_H264_PROFILE_BASELINE_GUID,
+            CodecProfile::H264Main => NV_ENC_H264_PROFILE_MAIN_GUID,
+            CodecProfile::H264High => NV_ENC_H264_PROFILE_HIGH_GUID,
+            CodecProfile::H264High444 => NV_ENC_H264_PROFILE_HIGH_444_GUID,
+            CodecProfile::H264Stereo => NV_ENC_H264_PROFILE_STEREO_GUID,
+            CodecProfile::H264ProgressiveHigh => NV_ENC_H264_PROFILE_PROGRESSIVE_HIGH_GUID,
+            CodecProfile::H264ConstrainedHigh => NV_ENC_H264_PROFILE_CONSTRAINED_HIGH_GUID,
+            CodecProfile::HevcMain => NV_ENC_HEVC_PROFILE_MAIN_GUID,
+            CodecProfile::HevcMain10 => NV_ENC_HEVC_PROFILE_MAIN10_GUID,
+            CodecProfile::HevcFrext => NV_ENC_HEVC_PROFILE_FREXT_GUID,
+        }
+    }
+
+    pub(crate) fn from_guid(guid: nvenc_sys::GUID) -> Self {
+        if guid == NV_ENC_CODEC_PROFILE_AUTOSELECT_GUID {
+            CodecProfile::Autoselect
+        } else if guid == NV_ENC_H264_PROFILE_BASELINE_GUID {
+            CodecProfile::H264Baseline
+        } else if guid == NV_ENC_H264_PROFILE_MAIN_GUID {
+            CodecProfile::H264Main
+        } else if guid == NV_ENC_H264_PROFILE_HIGH_GUID {
+            CodecProfile::H264High
+        } else if guid == NV_ENC_H264_PROFILE_HIGH_444_GUID {
+            CodecProfile::H264High444
+        } else if guid == NV_ENC_H264_PROFILE_STEREO_GUID {
+            CodecProfile::H264Stereo
+        } else if guid == NV_ENC_H264_PROFILE_PROGRESSIVE_HIGH_GUID {
+            CodecProfile::H264ProgressiveHigh
+        } else if guid == NV_ENC_H264_PROFILE_CONSTRAINED_HIGH_GUID {
+            CodecProfile::H264ConstrainedHigh
+        } else if guid == NV_ENC_HEVC_PROFILE_MAIN_GUID {
+            CodecProfile::HevcMain
+        } else if guid == NV_ENC_HEVC_PROFILE_MAIN10_GUID {
+            CodecProfile::HevcMain10
+        } else if guid == NV_ENC_HEVC_PROFILE_FREXT_GUID {
+            CodecProfile::HevcFrext
+        } else {
+            panic!("Invalid codec profile guid")
+        }
+    }
+}

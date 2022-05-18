@@ -1,4 +1,4 @@
-use crate::{nvenc_function, Result, RawEncoder};
+use crate::{nvenc_function, Result, NvidiaEncoder};
 use crossbeam_channel::{Receiver, Sender};
 use std::sync::Arc;
 use windows::{
@@ -16,7 +16,7 @@ use windows::{
 };
 
 pub struct EncoderInput<const BUF_SIZE: usize> {
-    encoder: Arc<RawEncoder<BUF_SIZE>>,
+    encoder: Arc<NvidiaEncoder<BUF_SIZE>>,
     device_context: ID3D11DeviceContext,
     frames_to_encode: Receiver<IDXGIResource>,
     copy_complete: Sender<()>,
@@ -35,7 +35,7 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
 
         // TODO: Handle `recv` error
         let frame = self.frames_to_encode.recv().unwrap();
-        self.copy_input_frame(frame, &self.encoder.io[current_index].d3d11_texture);
+        self.copy_input_frame(frame, &self.encoder.io[current_index].texture);
         // TODO: Handle `send` error
         self.copy_complete.send(()).unwrap();
 
@@ -93,7 +93,7 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
 }
 
 pub struct EncoderOutput<const BUF_SIZE: usize> {
-    encoder: Arc<RawEncoder<BUF_SIZE>>,
+    encoder: Arc<NvidiaEncoder<BUF_SIZE>>,
     occupied_indices: Receiver<usize>,
     avail_indices: Sender<usize>,
 }
