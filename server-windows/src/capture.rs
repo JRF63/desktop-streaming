@@ -180,3 +180,9 @@ impl ScreenDuplicator {
         }
     }
 }
+
+
+#[test]
+fn print_size() {
+    println!("IDXGIResource size: {}", std::mem::size_of::<IDXGIResource>());
+}

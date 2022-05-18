@@ -115,6 +115,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-channel"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aaa7bd5fb665c6864b5f963dd9097905c54125909c7aa94c9e18507cdbe6c53"
+dependencies = [
+ "cfg-if 1.0.0",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bf124c720b7686e3c2663cf54062ab0f68a88af2fb6a030e87e30bf721fcb38"
+dependencies = [
+ "cfg-if 1.0.0",
+ "lazy_static",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -205,10 +225,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "nvenc-windows"
+name = "nvenc-sys"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+ "windows",
+]
+
+[[package]]
+name = "nvenc-windows"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "nvenc-sys",
  "windows",
 ]
 
@@ -269,6 +298,7 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 name = "server-windows"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
  "nvenc-windows",
  "windows",
 ]

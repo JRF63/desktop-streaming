@@ -16,6 +16,7 @@ use windows::{
         },
     },
 };
+use crossbeam_channel::{Sender, Receiver, bounded};
 
 /// A buffer for the duplicated image.
 ///
@@ -27,37 +28,53 @@ use windows::{
 pub struct TextureBuffer {
     d3d11_device: ID3D11Device,
     device_context: ID3D11DeviceContext,
-    input_buffer: ID3D11Texture2D,
-    index: u32,
-    buffer_size: u32,
+    unprocessed_textures: Sender<ID3D11Texture2D>,
+    processed_textures: Receiver<ID3D11Texture2D>,
 }
 
 impl TextureBuffer {
     /// Creates a new `TextureBuffer`.
     pub fn new(
         d3d11_device: ID3D11Device,
-        output_dupl_desc: &DXGI_OUTDUPL_DESC,
-        buffer_size: u32,
-    ) -> Result<()> {
+        display_desc: &DXGI_OUTDUPL_DESC,
+        num_buffers: usize,
+    ) -> Result<(TextureBuffer, Receiver<ID3D11Texture2D>, Sender<ID3D11Texture2D>)> {
         let mut device_context = None;
         unsafe {
             d3d11_device.GetImmediateContext(&mut device_context);
         }
-        Ok(())
+        let (unprocessed_textures, encoder_unprocessed) = bounded(num_buffers);
+        let (encoder_processed, processed_textures) = bounded(num_buffers);
+
+        for _ in 0..num_buffers {
+            let input_buffer = TextureBuffer::create_input_buffer(
+                &d3d11_device,
+                display_desc
+            )?;
+            // TODO: Handle `send` error
+            encoder_processed.send(input_buffer).unwrap();
+        }
+
+        let texture_buffer = TextureBuffer {
+            d3d11_device,
+            device_context: device_context.unwrap(),
+            unprocessed_textures,
+            processed_textures,
+        };
+        Ok((texture_buffer, encoder_unprocessed, encoder_processed))
     }
 
     /// Creates an `ID3D11Texture2D` where the duplicated frame can be copied to.
     fn create_input_buffer(
         d3d11_device: &ID3D11Device,
         display_desc: &DXGI_OUTDUPL_DESC,
-        buffer_size: u32,
     ) -> Result<ID3D11Texture2D> {
         let texture_desc = D3D11_TEXTURE2D_DESC {
             Width: display_desc.ModeDesc.Width,
             Height: display_desc.ModeDesc.Height,
             // plain display output has only one mip
             MipLevels: 1,
-            ArraySize: buffer_size,
+            ArraySize: 1,
             Format: display_desc.ModeDesc.Format,
             SampleDesc: DXGI_SAMPLE_DESC {
                 // default sampler mode
@@ -121,30 +138,26 @@ impl TextureBuffer {
     // }
 
     /// Copies the passed resource to the internal texture buffer and returns
-    /// its subresource index.
+    /// its index.
     #[inline]
-    pub fn copy_input_frame(&mut self, frame: IDXGIResource) -> Result<u32> {
-        let acquired_image: ID3D11Resource = frame.cast()?;
+    pub fn copy_input_frame(&mut self, frame: IDXGIResource) -> Result<()> {
+        let acquired_image: ID3D11Texture2D = frame.cast()?;
+
+        // TODO: Handle `recv` error
+        let input_buffer = self.processed_textures.recv().unwrap();
 
         unsafe {
-            self.device_context.CopySubresourceRegion(
-                &self.input_buffer,
-                self.index,
-                0,
-                0,
-                0,
-                acquired_image,
-                0,
-                std::ptr::null(),
+            self.device_context.CopyResource(
+                &input_buffer,
+                &acquired_image,
             );
         }
 
-        let result = self.index;
-        // increment the subresource index
-        self.index = (self.index + 1) % self.buffer_size;
+        // TODO: Handle `send` error
+        self.unprocessed_textures.send(acquired_image).unwrap();
 
-        self.synchronize_gpu_operation()?;
-        Ok(result)
+        // self.synchronize_gpu_operation()?;
+        Ok(())
     }
 
     /// GPU operations like CopySubresourceRegion are async and this function

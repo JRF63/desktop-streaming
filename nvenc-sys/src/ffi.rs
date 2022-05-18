@@ -11,6 +11,10 @@ const fn nvencapi_struct_version(ver: u32) -> u32 {
 
 pub const NV_ENCODE_API_FUNCTION_LIST_VER: u32 = nvencapi_struct_version(2);
 pub const NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER: u32 = nvencapi_struct_version(1);
+pub const NV_ENC_REGISTER_RESOURCE_VER: u32 = nvencapi_struct_version(5);
+pub const NV_ENC_CREATE_BITSTREAM_BUFFER_VER: u32 = nvencapi_struct_version(1);
+pub const NV_ENC_MAP_INPUT_RESOURCE_VER: u32 = nvencapi_struct_version(4);
+pub const NV_ENC_LOCK_BITSTREAM_VER: u32 = nvencapi_struct_version(1);
 
 impl PartialEq for GUID {
     fn eq(&self, other: &Self) -> bool {

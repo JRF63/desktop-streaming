@@ -7,6 +7,7 @@ fn main() {
         .header("nvEncodeAPI.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .layout_tests(false)
+        .default_enum_style(bindgen::EnumVariation::Rust { non_exhaustive: true })
         .rustified_enum("_NVENCSTATUS")
         .generate()
         .expect("Unable to generate bindings");
