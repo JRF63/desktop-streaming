@@ -102,8 +102,6 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
         // TODO: Handle `recv` error
         let frame = self.frame_receiver.recv().unwrap();
         self.copy_input_frame(frame, &self.encoder.io[current_index].texture);
-        // TODO: Handle `send` error
-        self.copy_complete_sender.send(()).unwrap();
 
         let input_buf =
             self.map_input(self.encoder.io[current_index].registered_resource.as_ptr())?;
@@ -112,21 +110,24 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
         self.pic_params.outputBitstream = self.encoder.io[current_index].output_ptr.as_ptr();
         self.pic_params.completionEvent = self.encoder.io[current_index].event_obj.0 as *mut c_void;
 
-        // unsafe {
-        //     nvenc_function!(
-        //         self.encoder.functions.nvEncEncodePicture,
-        //         self.encoder.raw_encoder.as_ptr(),
-        //         &mut self.pic_params
-        //     );
-        // }
+        unsafe {
+            nvenc_function!(
+                self.encoder.functions.nvEncEncodePicture,
+                self.encoder.raw_encoder.as_ptr(),
+                &mut self.pic_params
+            );
+        }
 
-        // // used for invalidation of frames
-        // self.pic_params.inputTimeStamp += 1;
+        // TODO: Handle `send` error
+        self.copy_complete_sender.send(()).unwrap();
 
-        // // TODO: Handle `try_send` error
-        // self.occupied_indices_sender
-        //     .try_send(current_index)
-        //     .unwrap();
+        // used for invalidation of frames
+        self.pic_params.inputTimeStamp += 1;
+
+        // TODO: Handle `try_send` error
+        self.occupied_indices_sender
+            .try_send(current_index)
+            .unwrap();
         Ok(())
     }
 

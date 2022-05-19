@@ -1,6 +1,8 @@
 mod capture;
 mod device;
 
+use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT};
+
 fn main() {
     let display_index = 0;
     let formats = vec![windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM];
@@ -22,15 +24,30 @@ fn main() {
 
     std::thread::spawn(move || {
         for _i in 0..NUM_FRAMES {
-            encoder_output.wait_for_output(|lock_bitstream| {
-                // println!("{}", lock_bitstream.bitstreamSizeInBytes);
-            }).unwrap();
+            encoder_output
+                .wait_for_output(|lock| {
+                    println!("{}: {}", lock.outputTimeStamp, lock.bitstreamSizeInBytes);
+                })
+                .unwrap();
         }
     });
 
     for _i in 0..NUM_FRAMES {
-        println!("loop");
-        let (resource, _x) = duplicator.acquire_frame().unwrap();
+        let (resource, _x) = loop {
+            match duplicator.acquire_frame() {
+                Ok(r) => break r,
+                Err(e) => {
+                    match e.code() {
+                        DXGI_ERROR_WAIT_TIMEOUT => (),
+                        // must call reset_output_duplicator if AccessLost
+                        DXGI_ERROR_ACCESS_LOST => {
+                            duplicator.reset_output_duplicator(&formats).unwrap();
+                        }
+                        _ => panic!("{}", e),
+                    }
+                }
+            }
+        };
         frame_sender.send(resource).unwrap();
         copy_complete_receiver.recv().unwrap();
         duplicator.release_frame().unwrap();
