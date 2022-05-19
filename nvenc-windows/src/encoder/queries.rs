@@ -1,26 +1,21 @@
+use super::{NvidiaEncoder, Result};
 use crate::{
     guids::{Codec, CodecProfile},
-    nvenc_function, NvidiaEncoder, Result,
+    nvenc_function,
 };
 use std::mem::MaybeUninit;
 
 impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     pub fn codec_profiles(&self, codec: Codec) -> Result<Vec<CodecProfile>> {
-        let encode_guid = codec.to_guid();
+        let encode_guid = codec.into();
         let profile_guids = self.encode_profile_guids(encode_guid)?;
-        let encode_profiles = profile_guids
-            .iter()
-            .map(|guid| CodecProfile::from_guid(*guid))
-            .collect();
+        let encode_profiles = profile_guids.iter().map(|guid| (*guid).into()).collect();
         Ok(encode_profiles)
     }
 
     pub fn codecs(&self) -> Result<Vec<Codec>> {
         let encode_guids = self.encode_guids()?;
-        let codecs = encode_guids
-            .iter()
-            .map(|guid| Codec::from_guid(*guid))
-            .collect();
+        let codecs = encode_guids.iter().map(|guid| (*guid).into()).collect();
         Ok(codecs)
     }
 
