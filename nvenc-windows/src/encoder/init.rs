@@ -14,8 +14,7 @@ use windows::{
             Dxgi::{Common::DXGI_SAMPLE_DESC, DXGI_OUTDUPL_DESC},
         },
         System::LibraryLoader::{
-            FreeLibrary, GetProcAddress, LoadLibraryExA, LOAD_LIBRARY_REQUIRE_SIGNED_TARGET,
-            LOAD_LIBRARY_SEARCH_SYSTEM32,
+            FreeLibrary, GetProcAddress, LoadLibraryExA, LOAD_LIBRARY_SEARCH_SYSTEM32,
         },
         System::Threading::CreateEventA,
     },
@@ -27,7 +26,7 @@ pub(crate) fn load_library(lib_name: &str) -> Option<HINSTANCE> {
         LoadLibraryExA(
             PCSTR(lib_name.as_ptr() as *const u8),
             None,
-            LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_REQUIRE_SIGNED_TARGET,
+            LOAD_LIBRARY_SEARCH_SYSTEM32,
         )
     };
     load_result.ok()
@@ -52,16 +51,20 @@ pub(crate) fn fn_ptr_from_lib(
 
 /// Checks if the user's NvEncAPI version is supported.
 pub(crate) fn is_version_supported(lib: HINSTANCE) -> Option<bool> {
-    let mut max_supported_version: u32 = 0;
+    let mut version: u32 = 0;
     unsafe {
         let get_max_supported_version: unsafe extern "C" fn(*mut u32) -> nvenc_sys::NVENCSTATUS =
             std::mem::transmute(fn_ptr_from_lib(lib, "NvEncodeAPIGetMaxSupportedVersion")?);
-        let status = get_max_supported_version(&mut max_supported_version);
+        let status = get_max_supported_version(&mut version);
         if status != nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS {
             return None;
         }
     }
-    if max_supported_version >= nvenc_sys::NVENCAPI_VERSION {
+    let major_version = version >> 4;
+    let minor_version = version & 0b1111;
+    if major_version >= nvenc_sys::NVENCAPI_MAJOR_VERSION
+        && minor_version >= nvenc_sys::NVENCAPI_MINOR_VERSION
+    {
         Some(true)
     } else {
         Some(false)
@@ -101,7 +104,7 @@ pub(crate) fn open_encode_session(
     device: ID3D11Device,
 ) -> Option<NonNull<c_void>> {
     let mut session_params: nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS =
-        unsafe { std::mem::zeroed() };
+        unsafe { MaybeUninit::zeroed().assume_init() };
     session_params.version = nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER;
     session_params.deviceType = nvenc_sys::NV_ENC_DEVICE_TYPE::NV_ENC_DEVICE_TYPE_DIRECTX;
     session_params.device = unsafe { std::mem::transmute(device) };
@@ -169,7 +172,7 @@ pub(crate) fn create_output_buffers(
     raw_encoder: NonNull<c_void>,
 ) -> Result<NonNull<c_void>> {
     let mut create_bitstream_buffer_params: nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER =
-        unsafe { std::mem::zeroed() };
+        unsafe { MaybeUninit::zeroed().assume_init() };
     create_bitstream_buffer_params.version = nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
 
     unsafe {

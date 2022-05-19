@@ -66,6 +66,11 @@ impl ScreenDuplicator {
     }
 
     #[inline]
+    pub fn desc(&self) -> DXGI_OUTDUPL_DESC {
+        ScreenDuplicator::get_display_desc(&self.output_dupl)
+    }
+
+    #[inline]
     pub fn acquire_frame(&mut self) -> Result<(IDXGIResource, DXGI_OUTDUPL_FRAME_INFO)> {
         unsafe {
             let mut frame_info = DXGI_OUTDUPL_FRAME_INFO::default();
@@ -181,8 +186,10 @@ impl ScreenDuplicator {
     }
 }
 
-
 #[test]
 fn print_size() {
-    println!("IDXGIResource size: {}", std::mem::size_of::<IDXGIResource>());
+    println!(
+        "IDXGIResource size: {}",
+        std::mem::size_of::<IDXGIResource>()
+    );
 }

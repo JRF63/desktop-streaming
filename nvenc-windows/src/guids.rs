@@ -78,8 +78,8 @@ pub enum Codec {
 impl Into<nvenc_sys::GUID> for Codec {
     fn into(self) -> nvenc_sys::GUID {
         match self {
-            H264 => NV_ENC_CODEC_H264_GUID,
-            Hevc => NV_ENC_CODEC_HEVC_GUID,
+            Codec::H264 => NV_ENC_CODEC_H264_GUID,
+            Codec::Hevc => NV_ENC_CODEC_HEVC_GUID,
         }
     }
 }
@@ -114,17 +114,17 @@ pub enum CodecProfile {
 impl Into<nvenc_sys::GUID> for CodecProfile {
     fn into(self) -> nvenc_sys::GUID {
         match self {
-            Autoselect => NV_ENC_CODEC_PROFILE_AUTOSELECT_GUID,
-            H264Baseline => NV_ENC_H264_PROFILE_BASELINE_GUID,
-            H264Main => NV_ENC_H264_PROFILE_MAIN_GUID,
-            H264High => NV_ENC_H264_PROFILE_HIGH_GUID,
-            H264High444 => NV_ENC_H264_PROFILE_HIGH_444_GUID,
-            H264Stereo => NV_ENC_H264_PROFILE_STEREO_GUID,
-            H264ProgressiveHigh => NV_ENC_H264_PROFILE_PROGRESSIVE_HIGH_GUID,
-            H264ConstrainedHigh => NV_ENC_H264_PROFILE_CONSTRAINED_HIGH_GUID,
-            HevcMain => NV_ENC_HEVC_PROFILE_MAIN_GUID,
-            HevcMain10 => NV_ENC_HEVC_PROFILE_MAIN10_GUID,
-            HevcFrext => NV_ENC_HEVC_PROFILE_FREXT_GUID,
+            CodecProfile::Autoselect => NV_ENC_CODEC_PROFILE_AUTOSELECT_GUID,
+            CodecProfile::H264Baseline => NV_ENC_H264_PROFILE_BASELINE_GUID,
+            CodecProfile::H264Main => NV_ENC_H264_PROFILE_MAIN_GUID,
+            CodecProfile::H264High => NV_ENC_H264_PROFILE_HIGH_GUID,
+            CodecProfile::H264High444 => NV_ENC_H264_PROFILE_HIGH_444_GUID,
+            CodecProfile::H264Stereo => NV_ENC_H264_PROFILE_STEREO_GUID,
+            CodecProfile::H264ProgressiveHigh => NV_ENC_H264_PROFILE_PROGRESSIVE_HIGH_GUID,
+            CodecProfile::H264ConstrainedHigh => NV_ENC_H264_PROFILE_CONSTRAINED_HIGH_GUID,
+            CodecProfile::HevcMain => NV_ENC_HEVC_PROFILE_MAIN_GUID,
+            CodecProfile::HevcMain10 => NV_ENC_HEVC_PROFILE_MAIN10_GUID,
+            CodecProfile::HevcFrext => NV_ENC_HEVC_PROFILE_FREXT_GUID,
         }
     }
 }
@@ -173,13 +173,13 @@ pub enum EncoderPreset {
 impl Into<nvenc_sys::GUID> for EncoderPreset {
     fn into(self) -> nvenc_sys::GUID {
         match self {
-            P1 => NV_ENC_PRESET_P1_GUID,
-            P2 => NV_ENC_PRESET_P2_GUID,
-            P3 => NV_ENC_PRESET_P3_GUID,
-            P4 => NV_ENC_PRESET_P4_GUID,
-            P5 => NV_ENC_PRESET_P5_GUID,
-            P6 => NV_ENC_PRESET_P6_GUID,
-            P7 => NV_ENC_PRESET_P7_GUID,
+            EncoderPreset::P1 => NV_ENC_PRESET_P1_GUID,
+            EncoderPreset::P2 => NV_ENC_PRESET_P2_GUID,
+            EncoderPreset::P3 => NV_ENC_PRESET_P3_GUID,
+            EncoderPreset::P4 => NV_ENC_PRESET_P4_GUID,
+            EncoderPreset::P5 => NV_ENC_PRESET_P5_GUID,
+            EncoderPreset::P6 => NV_ENC_PRESET_P6_GUID,
+            EncoderPreset::P7 => NV_ENC_PRESET_P7_GUID,
         }
     }
 }

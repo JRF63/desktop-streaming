@@ -6,7 +6,7 @@
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 const fn nvencapi_struct_version(ver: u32) -> u32 {
-    NVENCAPI_VERSION | ((ver) << 16) | (0x7 << 28)
+    NVENCAPI_VERSION | (ver << 16) | (0x7 << 28)
 }
 
 pub const NV_ENC_CAPS_PARAM_VER: u32 = nvencapi_struct_version(1);
@@ -15,12 +15,12 @@ pub const NV_ENC_CREATE_INPUT_BUFFER_VER: u32 = nvencapi_struct_version(1);
 pub const NV_ENC_CREATE_BITSTREAM_BUFFER_VER: u32 = nvencapi_struct_version(1);
 pub const NV_ENC_CREATE_MV_BUFFER_VER: u32 = nvencapi_struct_version(1);
 pub const NV_ENC_RC_PARAMS_VER: u32 = nvencapi_struct_version(1);
-pub const NV_ENC_CONFIG_VER: u32 = (nvencapi_struct_version(7) | (1 << 31));
-pub const NV_ENC_INITIALIZE_PARAMS_VER: u32 = (nvencapi_struct_version(5) | (1 << 31));
-pub const NV_ENC_RECONFIGURE_PARAMS_VER: u32 = (nvencapi_struct_version(1) | (1 << 31));
-pub const NV_ENC_PRESET_CONFIG_VER: u32 = (nvencapi_struct_version(4) | (1 << 31));
+pub const NV_ENC_CONFIG_VER: u32 = nvencapi_struct_version(7) | (1 << 31);
+pub const NV_ENC_INITIALIZE_PARAMS_VER: u32 = nvencapi_struct_version(5) | (1 << 31);
+pub const NV_ENC_RECONFIGURE_PARAMS_VER: u32 = nvencapi_struct_version(1) | (1 << 31);
+pub const NV_ENC_PRESET_CONFIG_VER: u32 = nvencapi_struct_version(4) | (1 << 31);
 pub const NV_ENC_PIC_PARAMS_MVC_VER: u32 = nvencapi_struct_version(1);
-pub const NV_ENC_PIC_PARAMS_VER: u32 = (nvencapi_struct_version(4) | (1 << 31));
+pub const NV_ENC_PIC_PARAMS_VER: u32 = nvencapi_struct_version(4) | (1 << 31);
 pub const NV_ENC_MEONLY_PARAMS_VER: u32 = nvencapi_struct_version(3);
 pub const NV_ENC_LOCK_BITSTREAM_VER: u32 = nvencapi_struct_version(1);
 pub const NV_ENC_LOCK_INPUT_BUFFER_VER: u32 = nvencapi_struct_version(1);

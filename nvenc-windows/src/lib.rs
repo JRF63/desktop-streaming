@@ -12,3 +12,5 @@ macro_rules! nvenc_function {
         }
     }
 }
+
+pub use encoder::create_encoder;
