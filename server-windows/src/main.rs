@@ -6,7 +6,7 @@ use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIM
 fn main() {
     let display_index = 0;
     let formats = vec![windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM];
-    const NUM_FRAMES: usize = 100;
+    const NUM_FRAMES: usize = 60;
 
     let device = device::create_d3d11_device().unwrap();
     let mut duplicator =
@@ -26,7 +26,7 @@ fn main() {
         for _i in 0..NUM_FRAMES {
             encoder_output
                 .wait_for_output(|lock| {
-                    println!("{}: {}", lock.outputTimeStamp, lock.bitstreamSizeInBytes);
+                    println!("{}: {} bytes", lock.outputTimeStamp, lock.bitstreamSizeInBytes);
                 })
                 .unwrap();
         }

@@ -139,51 +139,10 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
             self.device_context
                 .CopyResource(texture_buffer, &acquired_image);
         }
-        // self.synchronize_gpu_operation()?;
     }
 
-    // /// GPU operations like CopySubresourceRegion are async and this function
-    // /// makes it _absolutely_ sure the texture is copied when the GPU accesses
-    // /// its buffer.
-    // #[inline(always)]
-    // fn synchronize_gpu_operation(&mut self) -> Result<()> {
-    //     let mut is_done = BOOL(0);
-
-    //     let copy_done_desc = D3D11_QUERY_DESC {
-    //         Query: D3D11_QUERY_EVENT,
-    //         MiscFlags: 0,
-    //     };
-
-    //     let mut flushed = false;
-
-    //     unsafe {
-    //         let query = self.d3d11_device.CreateQuery(&copy_done_desc)?;
-    //         self.device_context.End(&query);
-
-    //         loop {
-    //             let query_result = self.device_context.GetData(
-    //                 &query,
-    //                 (&mut is_done as *mut BOOL).cast(),
-    //                 std::mem::size_of::<BOOL>() as u32,
-    //                 0,
-    //             );
-
-    //             if query_result.is_ok() && is_done.as_bool() {
-    //                 break;
-    //             }
-
-    //             if !flushed {
-    //                 self.device_context.Flush();
-    //                 flushed = true;
-    //             }
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
-
-    /// This acts as a sync barrier - the input texture must not be modified before calling
-    /// `nvEncUnmapInputResource` on `EncoderOutput`.
+    /// Does not seem to function as a sync barrier. Texture copy only syncs on call to
+    /// `nvEncEncodePicture` if async encode is enabled.
     #[inline]
     fn map_input(
         &mut self,
@@ -200,7 +159,6 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
                 self.encoder.raw_encoder.as_ptr(),
                 &mut map_input_resource_params
             );
-            // debug_assert_eq!(mapping.mappedBufferFmt, self.pic_params.bufferFmt);
         }
         Ok(map_input_resource_params.mappedResource)
     }
