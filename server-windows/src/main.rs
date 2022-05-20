@@ -22,11 +22,28 @@ fn main() {
         }
     });
 
-    std::thread::spawn(move || {
+    let a = std::thread::spawn(move || {
+        use std::fs::File;
+        use std::io::prelude::*;
+
+        let mut file = File::create("input.h264").unwrap();
+
         for _i in 0..NUM_FRAMES {
             encoder_output
                 .wait_for_output(|lock| {
-                    println!("{}: {} bytes", lock.outputTimeStamp, lock.bitstreamSizeInBytes);
+                    println!(
+                        "{}: {} bytes",
+                        lock.outputTimeStamp, lock.bitstreamSizeInBytes
+                    );
+
+                    let slice = unsafe {
+                        std::slice::from_raw_parts(
+                            lock.bitstreamBufferPtr as *const u8,
+                            lock.bitstreamSizeInBytes as usize,
+                        )
+                    };
+
+                    file.write_all(slice).unwrap();
                 })
                 .unwrap();
         }
@@ -52,4 +69,6 @@ fn main() {
         copy_complete_receiver.recv().unwrap();
         duplicator.release_frame().unwrap();
     }
+
+    a.join().unwrap();
 }
