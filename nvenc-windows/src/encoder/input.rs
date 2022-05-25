@@ -1,17 +1,17 @@
 use super::{NvidiaEncoder, Result};
 use crate::nvenc_function;
 use crossbeam_channel::{bounded, Receiver, Sender};
-use std::{ffi::c_void, sync::Arc, mem::MaybeUninit};
+use std::{mem::MaybeUninit, sync::Arc};
 use windows::{
     core::Interface,
     Win32::Graphics::{
-        Direct3D11::{ID3D11DeviceContext, ID3D11Texture2D, D3D11_QUERY_EVENT, D3D11_QUERY_DESC},
+        Direct3D11::{ID3D11DeviceContext, ID3D11Texture2D},
         Dxgi::IDXGIResource,
     },
 };
 
-pub struct EncoderInput<const BUF_SIZE: usize> {
-    encoder: Arc<NvidiaEncoder<BUF_SIZE>>,
+pub struct EncoderInput {
+    encoder: Arc<NvidiaEncoder>,
     device_context: ID3D11DeviceContext,
     pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
     encoder_params: nvenc_sys::NV_ENC_RECONFIGURE_PARAMS,
@@ -21,25 +21,27 @@ pub struct EncoderInput<const BUF_SIZE: usize> {
     occupied_indices_sender: Sender<usize>,
 }
 
-unsafe impl<const BUF_SIZE: usize> Send for EncoderInput<BUF_SIZE> {}
+unsafe impl Send for EncoderInput {}
 
 /// Return type of `EncoderInput::new` instead of returning a tuple.
-pub(crate) struct EncoderInputReturn<const BUF_SIZE: usize> {
-    pub(crate) encoder_input: EncoderInput<BUF_SIZE>,
+pub(crate) struct EncoderInputReturn {
+    pub(crate) encoder_input: EncoderInput,
     pub(crate) frame_sender: Sender<IDXGIResource>,
     pub(crate) copy_complete_receiver: Receiver<()>,
     pub(crate) avail_indices_sender: Sender<usize>,
     pub(crate) occupied_indices_receiver: Receiver<usize>,
 }
 
-impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
+impl EncoderInput {
     pub(crate) fn new(
-        encoder: Arc<NvidiaEncoder<BUF_SIZE>>,
+        encoder: Arc<NvidiaEncoder>,
         device_context: ID3D11DeviceContext,
         init_params: nvenc_sys::NV_ENC_INITIALIZE_PARAMS,
-    ) -> EncoderInputReturn<BUF_SIZE> {
+        buf_size: usize,
+    ) -> EncoderInputReturn {
         let pic_params = {
-            let mut tmp: nvenc_sys::NV_ENC_PIC_PARAMS = unsafe { MaybeUninit::zeroed().assume_init() };
+            let mut tmp: nvenc_sys::NV_ENC_PIC_PARAMS =
+                unsafe { MaybeUninit::zeroed().assume_init() };
             tmp.version = nvenc_sys::NV_ENC_PIC_PARAMS_VER;
             tmp.inputWidth = init_params.encodeWidth;
             tmp.inputHeight = init_params.encodeHeight;
@@ -50,7 +52,8 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
         };
 
         let encoder_params = {
-            let mut tmp: nvenc_sys::NV_ENC_RECONFIGURE_PARAMS = unsafe { MaybeUninit::zeroed().assume_init() };
+            let mut tmp: nvenc_sys::NV_ENC_RECONFIGURE_PARAMS =
+                unsafe { MaybeUninit::zeroed().assume_init() };
             tmp.version = nvenc_sys::NV_ENC_RECONFIGURE_PARAMS_VER;
             tmp.reInitEncodeParams = init_params;
             tmp
@@ -58,10 +61,10 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
 
         let (frame_sender, frame_receiver) = bounded(0);
         let (copy_complete_sender, copy_complete_receiver) = bounded(0);
-        let (avail_indices_sender, avail_indices_receiver) = bounded(BUF_SIZE);
-        let (occupied_indices_sender, occupied_indices_receiver) = bounded(BUF_SIZE);
+        let (avail_indices_sender, avail_indices_receiver) = bounded(buf_size);
+        let (occupied_indices_sender, occupied_indices_receiver) = bounded(buf_size);
 
-        for i in 0..BUF_SIZE {
+        for i in 0..buf_size {
             avail_indices_sender.send(i).unwrap();
         }
 
@@ -101,14 +104,19 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
 
         // TODO: Handle `recv` error
         let frame = self.frame_receiver.recv().unwrap();
-        self.copy_input_frame(frame, &self.encoder.io[current_index].texture);
+        self.copy_input_frame(frame, &self.encoder.input_textures, current_index);
 
-        let input_buf =
-            self.map_input(self.encoder.io[current_index].registered_resource.as_ptr())?;
-        unsafe { *self.encoder.io[current_index].input_ptr.get() = input_buf; }
+        let input_buf = self.map_input(
+            self.encoder.buffers[current_index]
+                .registered_resource
+                .as_ptr(),
+        )?;
+        unsafe {
+            *self.encoder.buffers[current_index].input_ptr.get() = input_buf;
+        }
         self.pic_params.inputBuffer = input_buf;
-        self.pic_params.outputBitstream = self.encoder.io[current_index].output_ptr.as_ptr();
-        self.pic_params.completionEvent = self.encoder.io[current_index].event_obj.0 as *mut c_void;
+        self.pic_params.outputBitstream = self.encoder.buffers[current_index].output_ptr.as_ptr();
+        self.pic_params.completionEvent = self.encoder.buffers[current_index].event_obj.as_ptr();
 
         unsafe {
             nvenc_function!(
@@ -133,11 +141,24 @@ impl<const BUF_SIZE: usize> EncoderInput<BUF_SIZE> {
 
     /// Copies the passed resource to the internal texture buffer.
     #[inline]
-    fn copy_input_frame(&self, frame: IDXGIResource, texture_buffer: &ID3D11Texture2D) {
+    fn copy_input_frame(
+        &self,
+        frame: IDXGIResource,
+        textures: &ID3D11Texture2D,
+        current_index: usize,
+    ) {
         let acquired_image: ID3D11Texture2D = frame.cast().unwrap();
         unsafe {
-            self.device_context
-                .CopyResource(texture_buffer, &acquired_image);
+            self.device_context.CopySubresourceRegion(
+                textures,
+                current_index as u32,
+                0,
+                0,
+                0,
+                &acquired_image,
+                0,
+                std::ptr::null(),
+            );
         }
     }
 

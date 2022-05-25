@@ -1,12 +1,18 @@
 mod capture;
 mod device;
 
+use nvenc_windows::{Codec, EncoderPreset, TuningInfo};
 use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT};
 
 fn main() {
     let display_index = 0;
     let formats = vec![windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM];
-    const NUM_FRAMES: usize = 60;
+    let buf_size: usize = 8;
+    const NUM_FRAMES: usize = 120;
+
+    let codec = Codec::H264;
+    let preset = EncoderPreset::P2;
+    let tuning_info = TuningInfo::UltraLowLatency;
 
     let device = device::create_d3d11_device().unwrap();
     let mut duplicator =
@@ -14,7 +20,7 @@ fn main() {
     let display_desc = duplicator.desc();
 
     let (mut encoder_input, encoder_output, frame_sender, copy_complete_receiver) =
-        nvenc_windows::create_encoder::<8>(device, &display_desc);
+        nvenc_windows::create_encoder(device, &display_desc, codec, preset, tuning_info, buf_size);
 
     std::thread::spawn(move || {
         for _i in 0..NUM_FRAMES {
@@ -31,10 +37,10 @@ fn main() {
         for _i in 0..NUM_FRAMES {
             encoder_output
                 .wait_for_output(|lock| {
-                    println!(
-                        "{}: {} bytes",
-                        lock.outputTimeStamp, lock.bitstreamSizeInBytes
-                    );
+                    // println!(
+                    //     "{}: {} bytes",
+                    //     lock.outputTimeStamp, lock.bitstreamSizeInBytes
+                    // );
 
                     let slice = unsafe {
                         std::slice::from_raw_parts(
@@ -50,6 +56,7 @@ fn main() {
     });
 
     for _i in 0..NUM_FRAMES {
+        let now = std::time::Instant::now();
         let (resource, _x) = loop {
             match duplicator.acquire_frame() {
                 Ok(r) => break r,
@@ -68,6 +75,7 @@ fn main() {
         frame_sender.send(resource).unwrap();
         copy_complete_receiver.recv().unwrap();
         duplicator.release_frame().unwrap();
+        println!("Elapsed: {} ms", now.elapsed().as_millis());
     }
 
     a.join().unwrap();

@@ -4,57 +4,93 @@ use std::{ffi::CString, mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
 use windows::{
     core::PCSTR,
     Win32::{
-        Foundation::{CloseHandle, HANDLE, HINSTANCE},
+        Foundation::{CloseHandle, FARPROC, HANDLE, HINSTANCE},
         Graphics::{
             Direct3D11::{
-                ID3D11Device, ID3D11Texture2D, D3D11_BIND_FLAG, D3D11_CPU_ACCESS_FLAG,
-                D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
-                D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+                ID3D11Device, ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_CPU_ACCESS_FLAG,
+                D3D11_RESOURCE_MISC_FLAG, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
             },
             Dxgi::{Common::DXGI_SAMPLE_DESC, DXGI_OUTDUPL_DESC},
         },
         System::LibraryLoader::{
             FreeLibrary, GetProcAddress, LoadLibraryExA, LOAD_LIBRARY_SEARCH_SYSTEM32,
         },
-        System::Threading::CreateEventA,
+        System::{
+            Threading::{CreateEventA, WaitForSingleObject, WAIT_OBJECT_0},
+            WindowsProgramming::INFINITE,
+        },
     },
 };
 
-pub(crate) fn load_library(lib_name: &str) -> Option<HINSTANCE> {
-    let lib_name = CString::new(lib_name).unwrap();
-    let load_result = unsafe {
-        LoadLibraryExA(
-            PCSTR(lib_name.as_ptr() as *const u8),
-            None,
-            LOAD_LIBRARY_SEARCH_SYSTEM32,
-        )
-    };
-    load_result.ok()
-}
+#[repr(transparent)]
+pub(crate) struct Library(HINSTANCE);
 
-pub(crate) fn free_library(lib: HINSTANCE) {
-    unsafe {
-        // Deliberately ignoring failure
-        FreeLibrary(lib);
+impl Drop for Library {
+    fn drop(&mut self) {
+        unsafe {
+            // Deliberately ignoring failure
+            FreeLibrary(self.0);
+        }
     }
 }
 
-/// Extracts the function pointer from the library.
-pub(crate) fn fn_ptr_from_lib(
-    lib: HINSTANCE,
-    fn_name: &str,
-) -> Option<unsafe extern "system" fn() -> isize> {
-    let fn_name = CString::new(fn_name).unwrap();
-    let fn_ptr = unsafe { GetProcAddress(lib, PCSTR(fn_name.as_ptr() as *const u8)) };
-    fn_ptr
+impl Library {
+    /// Open a .dll.
+    pub(crate) fn load(lib_name: &str) -> windows::core::Result<Self> {
+        let lib_name = CString::new(lib_name).unwrap();
+        let lib = unsafe {
+            LoadLibraryExA(
+                PCSTR(lib_name.as_ptr() as *const u8),
+                None,
+                LOAD_LIBRARY_SEARCH_SYSTEM32,
+            )
+        }?;
+        Ok(Library(lib))
+    }
+
+    /// Extracts the function pointer from the library.
+    pub(crate) fn fn_ptr(&self, fn_name: &str) -> FARPROC {
+        let fn_name = CString::new(fn_name).unwrap();
+        unsafe { GetProcAddress(self.0, PCSTR(fn_name.as_ptr() as *const u8)) }
+    }
+}
+
+#[repr(transparent)]
+pub(crate) struct EventObject(HANDLE);
+
+impl Drop for EventObject {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+impl EventObject {
+    /// Create a Windows Event Object for signaling encoding completion of a frame.
+    pub(crate) fn new() -> windows::core::Result<Self> {
+        let event = unsafe { CreateEventA(std::ptr::null(), false, false, None) }?;
+        Ok(EventObject(event))
+    }
+
+    pub(crate) fn wait(&self) -> windows::core::Result<()> {
+        unsafe {
+            match WaitForSingleObject(self.0, INFINITE) {
+                WAIT_OBJECT_0 => Ok(()),
+                _ => Err(windows::core::Error::from_win32())
+            }
+        }
+    }
+
+    pub(crate) fn as_ptr(&self) -> *mut c_void {
+        self.0.0 as *mut c_void
+    }
 }
 
 /// Checks if the user's NvEncAPI version is supported.
-pub(crate) fn is_version_supported(lib: HINSTANCE) -> Option<bool> {
+pub(crate) fn is_version_supported(lib: &Library) -> Option<bool> {
     let mut version: u32 = 0;
     unsafe {
         let get_max_supported_version: unsafe extern "C" fn(*mut u32) -> nvenc_sys::NVENCSTATUS =
-            std::mem::transmute(fn_ptr_from_lib(lib, "NvEncodeAPIGetMaxSupportedVersion")?);
+            std::mem::transmute(lib.fn_ptr("NvEncodeAPIGetMaxSupportedVersion")?);
         let status = get_max_supported_version(&mut version);
         if status != nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS {
             return None;
@@ -72,7 +108,7 @@ pub(crate) fn is_version_supported(lib: HINSTANCE) -> Option<bool> {
 }
 
 /// Load the struct containing the NvEncAPI function pointers.
-pub(crate) fn get_function_list(lib: HINSTANCE) -> Option<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST> {
+pub(crate) fn get_function_list(lib: &Library) -> Option<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST> {
     // Need to zero the struct before passing to `NvEncodeAPICreateInstance`
     let mut fn_list = MaybeUninit::<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST>::zeroed();
     let fn_list = unsafe {
@@ -81,8 +117,7 @@ pub(crate) fn get_function_list(lib: HINSTANCE) -> Option<nvenc_sys::NV_ENCODE_A
 
         let create_instance: unsafe extern "C" fn(
             *mut nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-        ) -> nvenc_sys::NVENCSTATUS =
-            std::mem::transmute(fn_ptr_from_lib(lib, "NvEncodeAPICreateInstance")?);
+        ) -> nvenc_sys::NVENCSTATUS = std::mem::transmute(lib.fn_ptr("NvEncodeAPICreateInstance")?);
         if create_instance(fn_list.as_mut_ptr()) != nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS {
             return None;
         }
@@ -131,6 +166,7 @@ pub(crate) fn register_resource(
     functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
     raw_encoder: NonNull<c_void>,
     texture: ID3D11Texture2D,
+    subresource_index: u32,
 ) -> Result<NonNull<c_void>> {
     let mut texture_desc = MaybeUninit::uninit();
     let texture_desc = unsafe {
@@ -144,7 +180,7 @@ pub(crate) fn register_resource(
         width: texture_desc.Width,
         height: texture_desc.Height,
         pitch: 0,
-        subResourceIndex: 0,
+        subResourceIndex: subresource_index,
         resourceToRegister: unsafe { std::mem::transmute(texture) }, // cast to *mut c_void,
         registeredResource: std::ptr::null_mut(),
         bufferFormat: crate::util::dxgi_to_nv_format(texture_desc.Format),
@@ -185,17 +221,18 @@ pub(crate) fn create_output_buffers(
     Ok(NonNull::new(create_bitstream_buffer_params.bitstreamBuffer).unwrap())
 }
 
-/// Creates an `ID3D11Texture2D` where the duplicated frame can be copied to.
+/// Creates an `ID3D11Texture2D` where the duplicated frames can be copied to.
 pub(crate) fn create_texture_buffer(
     device: &ID3D11Device,
     display_desc: &DXGI_OUTDUPL_DESC,
+    buf_size: usize,
 ) -> windows::core::Result<ID3D11Texture2D> {
     let texture_desc = D3D11_TEXTURE2D_DESC {
         Width: display_desc.ModeDesc.Width,
         Height: display_desc.ModeDesc.Height,
         // plain display output has only one mip
         MipLevels: 1,
-        ArraySize: 1,
+        ArraySize: buf_size as u32,
         Format: display_desc.ModeDesc.Format,
         SampleDesc: DXGI_SAMPLE_DESC {
             // default sampler mode
@@ -205,28 +242,15 @@ pub(crate) fn create_texture_buffer(
         },
         // GPU needs read/write access
         Usage: D3D11_USAGE_DEFAULT,
-        // TODO: what flag to use?
-        BindFlags: D3D11_BIND_FLAG(0),
+        // https://github.com/NVIDIA/video-sdk-samples/blob/aa3544dcea2fe63122e4feb83bf805ea40e58dbe/Samples/NvCodec/NvEncoder/NvEncoderD3D11.cpp#L90
+        BindFlags: D3D11_BIND_RENDER_TARGET,
         // don't need to be accessed by the CPU
         CPUAccessFlags: D3D11_CPU_ACCESS_FLAG(0),
-        // shared with the encoder that has a "different" GPU handle,
-        // NTHANDLE to be able to use `CreateSharedHandle` and pass
-        // DXGI_SHARED_RESOURCE_READ
-        MiscFlags: D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
+        MiscFlags: D3D11_RESOURCE_MISC_FLAG(0),
     };
 
     unsafe {
         let input_buffer = device.CreateTexture2D(&texture_desc, std::ptr::null())?;
         Ok(input_buffer)
     }
-}
-
-/// Create a Windows Event Object for signaling encoding completion of a frame.
-pub(crate) fn create_event_object() -> windows::core::Result<HANDLE> {
-    unsafe { CreateEventA(std::ptr::null(), false, false, None) }
-}
-
-/// Destroy a created Event Object.
-pub(crate) fn destroy_event_object(event_obj: HANDLE) {
-    unsafe { CloseHandle(event_obj) };
 }
