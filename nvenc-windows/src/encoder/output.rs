@@ -1,5 +1,6 @@
 use super::{NvidiaEncoder, Result};
 use crate::nvenc_function;
+use anyhow::Context;
 use crossbeam_channel::{Receiver, Sender};
 use std::{mem::MaybeUninit, sync::Arc};
 
@@ -25,11 +26,12 @@ impl EncoderOutput {
     pub fn wait_for_output<F: FnMut(&nvenc_sys::NV_ENC_LOCK_BITSTREAM) -> ()>(
         &self,
         mut consume_output: F,
-    ) -> Result<()> {
-        // TODO: Handle `recv` error
-        let index = self.occupied_indices_receiver.recv().unwrap();
-        // TODO: Handle `wait` error
-        self.encoder.buffers[index].event_obj.wait().unwrap();
+    ) -> anyhow::Result<()> {
+        const ERR_LABEL: &'static str = "EncoderOutput error";
+
+        let index = self.occupied_indices_receiver.recv().context(ERR_LABEL)?;
+        self.encoder.buffers[index].event_obj.wait().context(ERR_LABEL)?;
+
         let mut lock_params: nvenc_sys::NV_ENC_LOCK_BITSTREAM =
             unsafe { MaybeUninit::zeroed().assume_init() };
         lock_params.version = nvenc_sys::NV_ENC_LOCK_BITSTREAM_VER;
@@ -58,8 +60,8 @@ impl EncoderOutput {
                 *self.encoder.buffers[index].input_ptr.get()
             );
         }
-        // TODO: Handle `try_send` error
-        self.avail_indices_sender.try_send(index).unwrap();
+
+        self.avail_indices_sender.try_send(index).context(ERR_LABEL)?;
         Ok(())
     }
 }

@@ -1,4 +1,4 @@
-use super::{NvidiaEncoder, Result};
+use super::{EncoderParams, NvidiaEncoder, Result};
 use crate::nvenc_function;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::{mem::MaybeUninit, sync::Arc};
@@ -14,9 +14,7 @@ pub struct EncoderInput {
     encoder: Arc<NvidiaEncoder>,
     device_context: ID3D11DeviceContext,
     pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
-    encoder_params: nvenc_sys::NV_ENC_RECONFIGURE_PARAMS,
-    frame_receiver: Receiver<IDXGIResource>,
-    copy_complete_sender: Sender<()>,
+    encoder_params: EncoderParams,
     avail_indices_receiver: Receiver<usize>,
     occupied_indices_sender: Sender<usize>,
 }
@@ -26,8 +24,6 @@ unsafe impl Send for EncoderInput {}
 /// Return type of `EncoderInput::new` instead of returning a tuple.
 pub(crate) struct EncoderInputReturn {
     pub(crate) encoder_input: EncoderInput,
-    pub(crate) frame_sender: Sender<IDXGIResource>,
-    pub(crate) copy_complete_receiver: Receiver<()>,
     pub(crate) avail_indices_sender: Sender<usize>,
     pub(crate) occupied_indices_receiver: Receiver<usize>,
 }
@@ -36,35 +32,26 @@ impl EncoderInput {
     pub(crate) fn new(
         encoder: Arc<NvidiaEncoder>,
         device_context: ID3D11DeviceContext,
-        init_params: nvenc_sys::NV_ENC_INITIALIZE_PARAMS,
+        encoder_params: EncoderParams,
         buf_size: usize,
     ) -> EncoderInputReturn {
         let pic_params = {
             let mut tmp: nvenc_sys::NV_ENC_PIC_PARAMS =
                 unsafe { MaybeUninit::zeroed().assume_init() };
             tmp.version = nvenc_sys::NV_ENC_PIC_PARAMS_VER;
-            tmp.inputWidth = init_params.encodeWidth;
-            tmp.inputHeight = init_params.encodeHeight;
+            tmp.inputWidth = encoder_params.init_params().encodeWidth;
+            tmp.inputHeight = encoder_params.init_params().encodeHeight;
             tmp.inputPitch = tmp.inputWidth;
-            tmp.bufferFmt = init_params.bufferFormat;
+            tmp.bufferFmt = encoder_params.init_params().bufferFormat;
             tmp.pictureStruct = nvenc_sys::NV_ENC_PIC_STRUCT::NV_ENC_PIC_STRUCT_FRAME;
             tmp
         };
 
-        let encoder_params = {
-            let mut tmp: nvenc_sys::NV_ENC_RECONFIGURE_PARAMS =
-                unsafe { MaybeUninit::zeroed().assume_init() };
-            tmp.version = nvenc_sys::NV_ENC_RECONFIGURE_PARAMS_VER;
-            tmp.reInitEncodeParams = init_params;
-            tmp
-        };
-
-        let (frame_sender, frame_receiver) = bounded(0);
-        let (copy_complete_sender, copy_complete_receiver) = bounded(0);
         let (avail_indices_sender, avail_indices_receiver) = bounded(buf_size);
         let (occupied_indices_sender, occupied_indices_receiver) = bounded(buf_size);
 
         for i in 0..buf_size {
+            // This should not fail
             avail_indices_sender.send(i).unwrap();
         }
 
@@ -73,16 +60,12 @@ impl EncoderInput {
             device_context,
             pic_params,
             encoder_params,
-            frame_receiver,
-            copy_complete_sender,
             avail_indices_receiver,
             occupied_indices_sender,
         };
 
         EncoderInputReturn {
             encoder_input,
-            frame_sender,
-            copy_complete_receiver,
             avail_indices_sender,
             occupied_indices_receiver,
         }
@@ -93,30 +76,80 @@ impl EncoderInput {
         // self.pic_params.encodePicFlags = nvenc_sys::NV_ENC_PIC_FLAG_EOS;
     }
 
-    pub fn update_pic_params(&mut self) {
-        todo!()
+    pub(crate) fn reconfigure_params(&mut self) -> Result<()> {
+        unsafe {
+            nvenc_function!(
+                self.encoder.functions.nvEncReconfigureEncoder,
+                self.encoder.raw_encoder.as_ptr(),
+                self.encoder_params.reconfig_params_mut()
+            );
+        }
+
+        Ok(())
     }
 
-    /// Waits for a frame to be encoded the copies it to a texture buffer and encodes it.
-    pub fn wait_and_encode_frame(&mut self) -> Result<()> {
-        // TODO: Handle `try_recv` error
-        let current_index = self.avail_indices_receiver.try_recv().unwrap();
+    pub fn update_average_bitrate(&mut self, bitrate: u32) -> Result<()> {
+        self.encoder_params
+            .encode_config_mut()
+            .rcParams
+            .averageBitRate = bitrate;
 
-        // TODO: Handle `recv` error
-        let frame = self.frame_receiver.recv().unwrap();
-        self.copy_input_frame(frame, &self.encoder.input_textures, current_index);
+        self.reconfigure_params()
+    }
 
-        let input_buf = self.map_input(
-            self.encoder.buffers[current_index]
-                .registered_resource
-                .as_ptr(),
-        )?;
+    pub fn get_codec_specific_data(&self) -> Result<Vec<u8>> {
         unsafe {
-            *self.encoder.buffers[current_index].input_ptr.get() = input_buf;
+            let mut buffer = vec![0; 1024];
+            let mut bytes_written = 0;
+            let mut params: nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD = MaybeUninit::zeroed().assume_init();
+            params.version = nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;
+            params.inBufferSize = buffer.len() as u32;
+            params.spsppsBuffer = buffer.as_mut_ptr().cast();
+            params.outSPSPPSPayloadSize = &mut bytes_written;
+
+            nvenc_function!(
+                self.encoder.functions.nvEncGetSequenceParams,
+                self.encoder.raw_encoder.as_ptr(),
+                &mut params
+            );
+            
+            buffer.truncate(bytes_written as usize);
+            Ok(buffer)
+        }
+    }
+
+    pub fn get_index(&self) -> usize {
+        self.avail_indices_receiver.try_recv().unwrap()
+    }
+
+    /// Copies the passed resource to the internal texture buffer.
+    #[inline]
+    pub fn copy_input_frame(&self, frame: IDXGIResource, subresource_index: usize) {
+        unsafe {
+            // `IDXGIResource` to `ID3D11Texture2D` should never fail
+            let acquired_image: ID3D11Texture2D = frame.cast().unwrap_unchecked();
+            self.device_context.CopySubresourceRegion(
+                &self.encoder.input_textures,
+                subresource_index as u32,
+                0,
+                0,
+                0,
+                &acquired_image,
+                0,
+                std::ptr::null(),
+            );
+        }
+    }
+
+    #[inline]
+    pub fn encode_copied_frame(&mut self, index: usize) -> Result<()> {
+        let input_buf = self.map_input(self.encoder.buffers[index].registered_resource.as_ptr())?;
+        unsafe {
+            *self.encoder.buffers[index].input_ptr.get() = input_buf;
         }
         self.pic_params.inputBuffer = input_buf;
-        self.pic_params.outputBitstream = self.encoder.buffers[current_index].output_ptr.as_ptr();
-        self.pic_params.completionEvent = self.encoder.buffers[current_index].event_obj.as_ptr();
+        self.pic_params.outputBitstream = self.encoder.buffers[index].output_ptr.as_ptr();
+        self.pic_params.completionEvent = self.encoder.buffers[index].event_obj.as_ptr();
 
         unsafe {
             nvenc_function!(
@@ -126,40 +159,15 @@ impl EncoderInput {
             );
         }
 
-        // TODO: Handle `send` error
-        self.copy_complete_sender.send(()).unwrap();
-
         // used for invalidation of frames
         self.pic_params.inputTimeStamp += 1;
 
-        // TODO: Handle `try_send` error
-        self.occupied_indices_sender
-            .try_send(current_index)
-            .unwrap();
         Ok(())
     }
 
-    /// Copies the passed resource to the internal texture buffer.
-    #[inline]
-    fn copy_input_frame(
-        &self,
-        frame: IDXGIResource,
-        textures: &ID3D11Texture2D,
-        current_index: usize,
-    ) {
-        let acquired_image: ID3D11Texture2D = frame.cast().unwrap();
-        unsafe {
-            self.device_context.CopySubresourceRegion(
-                textures,
-                current_index as u32,
-                0,
-                0,
-                0,
-                &acquired_image,
-                0,
-                std::ptr::null(),
-            );
-        }
+    pub fn return_index(&self, index: usize) {
+        // TODO: Handle `try_send` error
+        self.occupied_indices_sender.try_send(index).unwrap();
     }
 
     /// Does not seem to function as a sync barrier. Texture copy only syncs on call to

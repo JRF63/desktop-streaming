@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 nvenc-sys = { path = "../nvenc-sys" }
+anyhow = "1.0"
 crossbeam-channel = "0.5"
 
 [dependencies.windows]
