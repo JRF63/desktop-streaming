@@ -20,16 +20,13 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         layoutConstraints.clone(binding.root)
 
-        //nativeInstance = createNativeInstance(nativeInstance)
+        nativeInstance = createNativeInstance(nativeInstance)
 
         binding.surfaceView.holder.addCallback(object: SurfaceHolder.Callback {
-            override fun surfaceCreated(p0: SurfaceHolder) {
-                nativeInstance = createNativeInstance(nativeInstance)
-                sendSurfaceChanged(nativeInstance, p0.surface)
-            }
+            override fun surfaceCreated(p0: SurfaceHolder) {}
 
             override fun surfaceChanged(holder: SurfaceHolder, p1: Int, p2: Int, p3: Int) {
-                //sendSurfaceChanged(nativeInstance, holder.surface)
+                sendSurfaceChanged(nativeInstance, holder.surface)
             }
 
             override fun surfaceDestroyed(p0: SurfaceHolder) {

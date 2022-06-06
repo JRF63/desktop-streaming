@@ -252,7 +252,6 @@ fn decode_loop(
                         anyhow::bail!("`Destroy` was signaled before `SurfaceDestroyed`")
                     }
                     ActivityEvent::SurfaceChanged(java_surface) => {
-                        info!("SurfaceChanged");
                         let native_window = NonNull::new(unsafe {
                             ndk_sys::ANativeWindow_fromSurface(
                                 env.get_native_interface(),
@@ -286,7 +285,6 @@ fn decode_loop(
             };
         }
 
-        info!("outside");
         // Wait for `OnCreate` or `OnDestroy` event from Java side
         loop {
             match event_receiver.recv() {
