@@ -1,26 +1,27 @@
 use std::num::NonZeroI32;
 
+#[derive(Debug)]
 #[repr(transparent)]
 pub struct NvEncError(NonZeroI32);
 
 impl NvEncError {
-    pub(crate) const fn new(status: nvenc_sys::NVENCSTATUS) -> Self {
-        NvEncError(unsafe { NonZeroI32::new_unchecked(status as i32) })
+    pub(crate) const fn new(status: nvenc_sys::NVENCSTATUS) -> Option<Self> {
+        match NonZeroI32::new(status as i32) {
+            Some(status) => Some(NvEncError(status)),
+            None => None
+        }
+    }
+
+    fn as_nvenc_status(&self) -> nvenc_sys::NVENCSTATUS {
+        unsafe { std::mem::transmute(self.0) }
     }
 }
 
 impl std::error::Error for NvEncError {}
 
-impl std::fmt::Debug for NvEncError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-
 impl std::fmt::Display for NvEncError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let status: nvenc_sys::NVENCSTATUS = unsafe { std::mem::transmute(self.0) };
-        let err_msg = match status {
+        let err_msg = match self.as_nvenc_status() {
             nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS => "API call returned with no errors.",
             nvenc_sys::NVENCSTATUS::NV_ENC_ERR_NO_ENCODE_DEVICE => "No encode capable devices were detected.",
             nvenc_sys::NVENCSTATUS::NV_ENC_ERR_UNSUPPORTED_DEVICE => "Devices pass by the client is not supported.",

@@ -7,7 +7,7 @@ edition = "2021"
 bindgen = "0.53"
 
 [dependencies.windows]
-version = "0.36"
+version = "0.37"
 features = [
     "Win32_Foundation",
     "Win32_System_LibraryLoader"

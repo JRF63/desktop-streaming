@@ -1,10 +1,10 @@
 use super::Result;
-use crate::{nvenc_function, error::NvEncError};
+use crate::{error::NvEncError, nvenc_function};
 use std::{ffi::CString, mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
 use windows::{
     core::PCSTR,
     Win32::{
-        Foundation::{CloseHandle, FARPROC, HANDLE, HINSTANCE},
+        Foundation::{CloseHandle, HANDLE, HINSTANCE},
         Graphics::{
             Direct3D11::{
                 ID3D11Device, ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_CPU_ACCESS_FLAG,
@@ -36,7 +36,10 @@ impl Drop for Library {
 
 impl Library {
     /// Open a .dll.
-    pub(crate) fn load(lib_name: &str) -> windows::core::Result<Self> {
+    pub(crate) fn load(lib_name: &str) -> anyhow::Result<Self> {
+        if !crate::os::windows::is_system_library_signed(lib_name) {
+            anyhow::bail!("Library is not signed");
+        }
         let lib_name = CString::new(lib_name).unwrap();
         let lib = unsafe {
             LoadLibraryExA(
@@ -49,11 +52,14 @@ impl Library {
     }
 
     /// Extracts the function pointer from the library.
-    pub(crate) fn fn_ptr(&self, fn_name: &str) -> windows::core::Result<unsafe extern "system" fn() -> isize> {
+    pub(crate) fn fn_ptr(
+        &self,
+        fn_name: &str,
+    ) -> windows::core::Result<unsafe extern "system" fn() -> isize> {
         let fn_name = CString::new(fn_name).unwrap();
         match unsafe { GetProcAddress(self.0, PCSTR(fn_name.as_ptr() as *const u8)) } {
             Some(ptr) => Ok(ptr),
-            None => Err(windows::core::Error::from_win32())
+            None => Err(windows::core::Error::from_win32()),
         }
     }
 }
@@ -95,8 +101,8 @@ pub(crate) fn is_version_supported(lib: &Library) -> anyhow::Result<bool> {
         let get_max_supported_version: unsafe extern "C" fn(*mut u32) -> nvenc_sys::NVENCSTATUS =
             std::mem::transmute(lib.fn_ptr("NvEncodeAPIGetMaxSupportedVersion")?);
         let status = get_max_supported_version(&mut version);
-        if status != nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS {
-            return Err(NvEncError::new(status).into());
+        if let Some(error) = NvEncError::new(status) {
+            return Err(error.into());
         }
     }
     let major_version = version >> 4;
@@ -111,7 +117,9 @@ pub(crate) fn is_version_supported(lib: &Library) -> anyhow::Result<bool> {
 }
 
 /// Load the struct containing the NvEncAPI function pointers.
-pub(crate) fn get_function_list(lib: &Library) -> anyhow::Result<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST> {
+pub(crate) fn get_function_list(
+    lib: &Library,
+) -> anyhow::Result<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST> {
     // Need to zero the struct before passing to `NvEncodeAPICreateInstance`
     let mut fn_list = MaybeUninit::<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST>::zeroed();
     let fn_list = unsafe {
@@ -122,8 +130,8 @@ pub(crate) fn get_function_list(lib: &Library) -> anyhow::Result<nvenc_sys::NV_E
             *mut nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
         ) -> nvenc_sys::NVENCSTATUS = std::mem::transmute(lib.fn_ptr("NvEncodeAPICreateInstance")?);
         let status = create_instance(fn_list.as_mut_ptr());
-        if status != nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS {
-            return Err(NvEncError::new(status).into());
+        if let Some(error) = NvEncError::new(status) {
+            return Err(error.into());
         }
         fn_list.assume_init()
     };
@@ -133,7 +141,9 @@ pub(crate) fn get_function_list(lib: &Library) -> anyhow::Result<nvenc_sys::NV_E
     if fn_list.nvEncOpenEncodeSession.is_some() {
         Ok(fn_list)
     } else {
-        Err(anyhow::anyhow!("`NvEncodeAPICreateInstance` returned a malformed function list"))
+        Err(anyhow::anyhow!(
+            "`NvEncodeAPICreateInstance` returned a malformed function list"
+        ))
     }
 }
 
@@ -157,25 +167,26 @@ pub(crate) fn open_encode_session(
         )
     };
 
-    if status == nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS {
-        match NonNull::new(raw_encoder) {
+    match NvEncError::new(status) {
+        Some(error) => Err(error.into()),
+        None => match NonNull::new(raw_encoder) {
             Some(ptr) => Ok(ptr),
-            None => Err(anyhow::anyhow!("`nvEncOpenEncodeSessionEx` returned a null pointer"))
-        }
-    } else {
-        Err(NvEncError::new(status).into())
+            None => Err(anyhow::anyhow!(
+                "`nvEncOpenEncodeSessionEx` returned a null pointer"
+            )),
+        },
     }
 }
 
 pub(crate) fn register_async_event(
     functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
     raw_encoder: NonNull<c_void>,
-    event: &EventObject
+    event: &EventObject,
 ) -> Result<()> {
     unsafe {
         let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
         event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
-        event_params.completionEvent = event.0.0 as *mut c_void;
+        event_params.completionEvent = event.0 .0 as *mut c_void;
         nvenc_function!(
             functions.nvEncRegisterAsyncEvent,
             raw_encoder.as_ptr(),
@@ -188,12 +199,12 @@ pub(crate) fn register_async_event(
 pub(crate) fn unregister_async_event(
     functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
     raw_encoder: NonNull<c_void>,
-    event: &EventObject
+    event: &EventObject,
 ) -> Result<()> {
     unsafe {
         let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
         event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
-        event_params.completionEvent = event.0.0 as *mut c_void;
+        event_params.completionEvent = event.0 .0 as *mut c_void;
         nvenc_function!(
             functions.nvEncUnregisterAsyncEvent,
             raw_encoder.as_ptr(),

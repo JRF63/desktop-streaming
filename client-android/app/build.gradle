@@ -11,17 +11,13 @@ android {
         minSdk 23
         targetSdk 32
         ndkVersion "23.1.7779620"
+        ndk {
+            abiFilters 'x86_64', 'arm64-v8a'
+        }
         versionCode 1
         versionName "1.0"
-
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        externalNativeBuild {
-            cmake {
-                cppFlags '-std=c++17'
-            }
-        }
     }
-
     buildTypes {
         release {
             minifyEnabled false
@@ -35,19 +31,12 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
-    externalNativeBuild {
-        cmake {
-            path file('src/main/cpp/CMakeLists.txt')
-            version '3.18.1'
-        }
-    }
     buildFeatures {
         viewBinding true
     }
 }
 
 dependencies {
-
     implementation 'androidx.core:core-ktx:1.8.0'
     implementation 'androidx.appcompat:appcompat:1.4.2'
     implementation 'com.google.android.material:material:1.6.1'
@@ -56,3 +45,31 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
 }
+
+task cargo {
+    // https://stackoverflow.com/questions/56659660/gradle-only-execute-a-task-if-code-in-a-directory-has-changed
+    // exec {
+    //     workingDir '/src/main/rust/builder'
+    //     commandLine 'cargo', 'run', '--', '../native', 'x86_64', '23'
+    // }
+//    println 'Hi'
+//    println android
+//    println android.applicationVariants
+//    android.applicationVariants.all { variant ->
+//        println variant.mergedFlavor.renderscriptNdkModeEnabled
+//    }
+
+//    android.applicationVariants.all { variant ->
+//
+//        println variant.mergedFlavor.minSdkVersion.apiLevel
+//        println variant.mergedFlavor
+//        variant.outputs.each { output ->
+//            def abi = output.getFilter(com.android.build.OutputFile.ABI)
+//            def flavor = variant.productFlavors.name
+//            println abi
+//            println flavor
+//        }
+//    }
+}
+
+build.dependsOn cargo

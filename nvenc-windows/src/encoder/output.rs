@@ -1,4 +1,4 @@
-use super::{NvidiaEncoder, Result};
+use super::NvidiaEncoder;
 use crate::nvenc_function;
 use anyhow::Context;
 use crossbeam_channel::{Receiver, Sender};
@@ -30,7 +30,10 @@ impl EncoderOutput {
         const ERR_LABEL: &'static str = "EncoderOutput error";
 
         let index = self.occupied_indices_receiver.recv().context(ERR_LABEL)?;
-        self.encoder.buffers[index].event_obj.wait().context(ERR_LABEL)?;
+        self.encoder.buffers[index]
+            .event_obj
+            .wait()
+            .context(ERR_LABEL)?;
 
         let mut lock_params: nvenc_sys::NV_ENC_LOCK_BITSTREAM =
             unsafe { MaybeUninit::zeroed().assume_init() };
@@ -61,7 +64,9 @@ impl EncoderOutput {
             );
         }
 
-        self.avail_indices_sender.try_send(index).context(ERR_LABEL)?;
+        self.avail_indices_sender
+            .try_send(index)
+            .context(ERR_LABEL)?;
         Ok(())
     }
 }
