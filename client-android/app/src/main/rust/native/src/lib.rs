@@ -268,7 +268,6 @@ fn decode_loop(
                     crossbeam_channel::TryRecvError::Empty => {
                         if packet_index < 120 {
                             let end_of_stream = if packet_index == 119 { true } else { false };
-                            info!("1");
                             if decoder.try_decode(
                                 debug::PACKETS[packet_index],
                                 time,
@@ -277,11 +276,8 @@ fn decode_loop(
                                 time += 16_666;
                                 packet_index += 1;
                             }
-                            info!("2");
                         }
-                        info!("3");
                         decoder.try_render()?;
-                        info!("4");
                     }
                     crossbeam_channel::TryRecvError::Disconnected => {
                         anyhow::bail!("Event channel was improperly dropped")
@@ -290,6 +286,7 @@ fn decode_loop(
             };
         }
 
+        info!("outside");
         // Wait for `OnCreate` or `OnDestroy` event from Java side
         loop {
             match event_receiver.recv() {

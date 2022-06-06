@@ -9,7 +9,7 @@ use std::{os::raw::c_char, ptr::NonNull};
 
 // `AMEDIAFORMAT_KEY_CSD_0` and `AMEDIAFORMAT_KEY_CSD_1` only became available in API level 28
 const MEDIAFORMAT_KEY_CSD_0: &'static str = "csd-0\0";
-const MEDIAFORMAT_KEY_CSD_1: &'static str = "csd-0\0";
+const MEDIAFORMAT_KEY_CSD_1: &'static str = "csd-1\0";
 
 #[repr(transparent)]
 pub(crate) struct MediaFormat(NonNull<AMediaFormat>);
