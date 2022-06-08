@@ -19,9 +19,25 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    flavorDimensions "abi"
+    productFlavors {
+        arm64_v8a {
+            ndk {
+                abiFilters 'arm64-v8a'
+            }
+        }
+        x86_64 {
+            ndk {
+                abiFilters 'x86_64'
+            }
         }
     }
     compileOptions {
@@ -33,6 +49,40 @@ android {
     }
     buildFeatures {
         viewBinding true
+    }
+
+    android.applicationVariants.all {  variant ->
+        def arch = variant.productFlavors.name[0]
+        if (arch == "arm64_v8a") {
+            arch = 'arm64-v8a' // replace `_` with `-`
+        }
+
+        def triple = ndkTriple(arch)
+        def isRelease = variant.buildType.name == "release"
+
+        def argsList = ['build', '--target', triple]
+        if (isRelease) {
+            argsList.add('--release')
+        }
+
+        // Run cargo only on the current variant being built
+        variant.generateBuildConfigProvider.configure {
+            it.doFirst {
+                exec {
+                    workingDir 'src/main/rust'
+                    executable 'cargo'
+                    args argsList
+                    environment[cargoLinkerEnvVarKey(triple)] = clangBinary(triple, variant.mergedFlavor.minSdkVersion.apiLevel)
+                }
+            }
+            it.doLast {
+                copy {
+                    from "src/main/rust/target/${triple}/${isRelease ? 'release' : 'debug'}"
+                    into "src/${isRelease ? 'main' : 'debug'}/jniLibs/${arch}"
+                    include '*.so'
+                }
+            }
+        }
     }
 }
 
@@ -46,30 +96,37 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
 }
 
-task cargo {
-    // https://stackoverflow.com/questions/56659660/gradle-only-execute-a-task-if-code-in-a-directory-has-changed
-    // exec {
-    //     workingDir '/src/main/rust/builder'
-    //     commandLine 'cargo', 'run', '--', '../native', 'x86_64', '23'
-    // }
-//    println 'Hi'
-//    println android
-//    println android.applicationVariants
-//    android.applicationVariants.all { variant ->
-//        println variant.mergedFlavor.renderscriptNdkModeEnabled
-//    }
-
-//    android.applicationVariants.all { variant ->
-//
-//        println variant.mergedFlavor.minSdkVersion.apiLevel
-//        println variant.mergedFlavor
-//        variant.outputs.each { output ->
-//            def abi = output.getFilter(com.android.build.OutputFile.ABI)
-//            def flavor = variant.productFlavors.name
-//            println abi
-//            println flavor
-//        }
-//    }
+def ndkTriple(arch) {
+    if (arch == 'arm64-v8a') {
+        return 'aarch64-linux-android'
+    } else if (arch == 'x86_64') {
+        return 'x86_64-linux-android'
+    } else {
+        throw new GradleException('Unsupported CPU architecture')
+    }
 }
 
-build.dependsOn cargo
+def hostOs() {
+    def osName = System.properties['os.name'].toLowerCase()
+    if (osName.contains('linux')) {
+        return "linux"
+    } else if (osName.contains('mac')) {
+        return "darwin"
+    } else if (osName.contains('windows')) {
+        return "windows"
+    }
+    throw new GradleException('Unsupported OS')
+}
+
+def ndkToolchainDir() {
+    android.ndkDirectory.toPath().resolve("""toolchains/llvm/prebuilt/${hostOs()}-x86_64""")
+}
+
+def cargoLinkerEnvVarKey(triple) {
+    "CARGO_TARGET_${triple.replace('-', '_').toUpperCase()}_LINKER".toString()
+}
+
+def clangBinary(triple, sdk) {
+    def ext = hostOs().contains('windows') ? '.cmd' : ''
+    ndkToolchainDir().resolve("bin/${triple}${sdk}-clang${ext}")
+}

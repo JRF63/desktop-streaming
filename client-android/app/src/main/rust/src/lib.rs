@@ -1,10 +1,10 @@
 mod debug;
 mod log;
 mod media;
+mod window;
 
 use jni::{objects::GlobalRef, JNIEnv, JavaVM};
 use std::{
-    ptr::NonNull,
     sync::{Arc, Barrier},
     thread,
 };
@@ -13,6 +13,7 @@ use std::{
 // adb install target\debug\apk\client-android.apk
 // C:\Users\Rafael\AppData\Local\Android\Sdk\emulator\emulator -avd Pixel_3_XL_API_31
 // adb install app\build\outputs\apk\debug\app-debug.apk
+// gradlew installX86_64Debug
 
 #[export_name = "Java_com_debug_myapplication_MainActivity_a"]
 pub extern "system" fn create_native_instance(
@@ -22,7 +23,7 @@ pub extern "system" fn create_native_instance(
 ) -> jni::sys::jlong {
     const NUM_THREADS: usize = 3;
 
-    fn inner_func(
+    fn inner_fn(
         env: JNIEnv,
         activity: jni::sys::jobject,
         previous_instance: jni::sys::jlong,
@@ -63,7 +64,7 @@ pub extern "system" fn create_native_instance(
             Ok(previous_instance)
         }
     }
-    match inner_func(env, activity, previous_instance) {
+    match inner_fn(env, activity, previous_instance) {
         Ok(instance) => instance,
         Err(e) => {
             error!("Native instance creation error: {}", e);
@@ -86,25 +87,25 @@ pub extern "system" fn send_destroy_signal(
 }
 
 #[export_name = "Java_com_debug_myapplication_MainActivity_c"]
-pub extern "system" fn send_surface_changed(
+pub extern "system" fn send_surface_created(
     env: JNIEnv,
     _activity: jni::sys::jobject,
     instance: jni::sys::jlong,
     surface: jni::sys::jobject,
 ) {
-    fn inner_func(
+    fn inner_fn(
         env: JNIEnv,
         instance: jni::sys::jlong,
         surface: jni::sys::jobject,
     ) -> anyhow::Result<()> {
         let native_instance = unsafe { NativeInstance::from_java_long(instance) };
         let surface = env.new_global_ref(surface)?;
-        native_instance.send_to_decoder(ActivityEvent::SurfaceChanged(surface))?;
+        native_instance.send_to_decoder(ActivityEvent::SurfaceCreated(surface))?;
         Ok(())
     }
 
-    if let Err(e) = inner_func(env, instance, surface) {
-        error!("Sending `SurfaceChanged` failed: {}", e);
+    if let Err(e) = inner_fn(env, instance, surface) {
+        error!("Sending `SurfaceCreated` failed: {}", e);
     }
 }
 
@@ -114,14 +115,14 @@ pub extern "system" fn send_surface_destroyed(
     _activity: jni::sys::jobject,
     instance: jni::sys::jlong,
 ) {
-    fn inner_func(instance: jni::sys::jlong) -> anyhow::Result<()> {
+    fn inner_fn(instance: jni::sys::jlong) -> anyhow::Result<()> {
         let native_instance = unsafe { NativeInstance::from_java_long(instance) };
         native_instance.send_to_connection(ActivityEvent::SurfaceDestroyed)?;
         native_instance.send_to_decoder(ActivityEvent::SurfaceDestroyed)?;
         Ok(())
     }
 
-    if let Err(e) = inner_func(instance) {
+    if let Err(e) = inner_fn(instance) {
         error!("Sending `SurfaceDestroyed` failed: {}", e);
     }
 }
@@ -130,7 +131,7 @@ pub extern "system" fn send_surface_destroyed(
 enum ActivityEvent {
     Create,
     Destroy,
-    SurfaceChanged(GlobalRef),
+    SurfaceCreated(GlobalRef),
     SurfaceDestroyed,
 }
 
@@ -203,24 +204,20 @@ fn decode_loop(
                 ActivityEvent::Create => {
                     anyhow::bail!("Unexpected state change while waiting for a `Surface`")
                 }
-                ActivityEvent::SurfaceChanged(java_surface) => break java_surface,
+                ActivityEvent::SurfaceCreated(java_surface) => break java_surface,
                 _ => anyhow::bail!("Received exit message before receiving a `Surface`"),
             },
             Err(_) => anyhow::bail!("Error in event channel while waiting for a `Surface`"),
         }
     };
-    let native_window = NonNull::new(unsafe {
-        ndk_sys::ANativeWindow_fromSurface(
-            env.get_native_interface(),
-            java_surface.as_obj().into_inner(),
-        )
-    })
-    .ok_or_else(|| anyhow::anyhow!("Unable to acquire an `ANativeWindow`"))?;
+
+    let mut native_window = window::NativeWindow::new(&env, &java_surface.as_obj())
+        .ok_or_else(|| anyhow::anyhow!("Unable to acquire an `ANativeWindow`"))?;
 
     let width = 1920;
     let height = 1080;
     let decoder = media::MediaCodec::create_video_decoder(
-        native_window,
+        &native_window,
         media::VideoType::H264,
         width,
         height,
@@ -244,25 +241,20 @@ fn decode_loop(
     loop {
         loop {
             match event_receiver.try_recv() {
-                Ok(msg) => match msg {
-                    ActivityEvent::Create => {
-                        anyhow::bail!("Unexpected state change while inside the decoding loop")
+                Ok(msg) => {
+                    match msg {
+                        ActivityEvent::Create => {
+                            anyhow::bail!("Unexpected state change to `OnCreate` while inside the decoding loop")
+                        }
+                        ActivityEvent::Destroy => {
+                            anyhow::bail!("`Destroy` was signaled before `SurfaceDestroyed`")
+                        }
+                        ActivityEvent::SurfaceCreated(_java_surface) => {
+                            anyhow::bail!("Surface was re-created while inside the decoding loop")
+                        }
+                        ActivityEvent::SurfaceDestroyed => break,
                     }
-                    ActivityEvent::Destroy => {
-                        anyhow::bail!("`Destroy` was signaled before `SurfaceDestroyed`")
-                    }
-                    ActivityEvent::SurfaceChanged(java_surface) => {
-                        let native_window = NonNull::new(unsafe {
-                            ndk_sys::ANativeWindow_fromSurface(
-                                env.get_native_interface(),
-                                java_surface.as_obj().into_inner(),
-                            )
-                        })
-                        .ok_or_else(|| anyhow::anyhow!("Unable to acquire an `ANativeWindow`"))?;
-                        decoder.set_output_surface(native_window)?;
-                    }
-                    ActivityEvent::SurfaceDestroyed => break,
-                },
+                }
                 Err(e) => match e {
                     crossbeam_channel::TryRecvError::Empty => {
                         if packet_index < 120 {
@@ -289,7 +281,16 @@ fn decode_loop(
         loop {
             match event_receiver.recv() {
                 // Continue from `OnPause` or `OnStop`
-                Ok(ActivityEvent::Create) => (),
+                Ok(ActivityEvent::Create) => {
+                    // Wait for a new surface to be created
+                    if let Ok(ActivityEvent::SurfaceCreated(java_surface)) = event_receiver.recv() {
+                        native_window = window::NativeWindow::new(&env, &java_surface.as_obj())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("Unable to acquire an `ANativeWindow`")
+                            })?;
+                        decoder.set_output_surface(&native_window)?;
+                    }
+                }
                 // App is being terminated
                 Ok(ActivityEvent::Destroy) => return Ok(()),
                 Ok(_) => anyhow::bail!("Unexpected state change while waiting for `Create` signal"),

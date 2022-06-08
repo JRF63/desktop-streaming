@@ -23,11 +23,11 @@ class MainActivity : AppCompatActivity() {
         nativeInstance = createNativeInstance(nativeInstance)
 
         binding.surfaceView.holder.addCallback(object: SurfaceHolder.Callback {
-            override fun surfaceCreated(p0: SurfaceHolder) {}
-
-            override fun surfaceChanged(holder: SurfaceHolder, p1: Int, p2: Int, p3: Int) {
-                sendSurfaceChanged(nativeInstance, holder.surface)
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                sendSurfaceCreated(nativeInstance, holder.surface)
             }
+
+            override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) {}
 
             override fun surfaceDestroyed(p0: SurfaceHolder) {
                 sendSurfaceDestroyed(nativeInstance)
@@ -56,7 +56,7 @@ class MainActivity : AppCompatActivity() {
     @JvmName("b")
     private external fun sendDestroySignal(nativeInstance: ULong)
     @JvmName("c")
-    private external fun sendSurfaceChanged(nativeInstance: ULong, surface: Surface)
+    private external fun sendSurfaceCreated(nativeInstance: ULong, surface: Surface)
     @JvmName("d")
     private external fun sendSurfaceDestroyed(nativeInstance: ULong)
 

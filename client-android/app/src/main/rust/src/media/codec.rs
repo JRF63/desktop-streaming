@@ -12,6 +12,7 @@ use std::{
     os::raw::{c_long, c_ulong},
     ptr::NonNull,
 };
+use crate::window::NativeWindow;
 
 #[repr(transparent)]
 pub(crate) struct MediaCodec(NonNull<AMediaCodec>);
@@ -27,7 +28,7 @@ impl Drop for MediaCodec {
 
 impl MediaCodec {
     pub(crate) fn create_video_decoder(
-        raw_native_window: NonNull<ANativeWindow>,
+        window: &NativeWindow,
         video_type: VideoType,
         width: i32,
         height: i32,
@@ -44,7 +45,7 @@ impl MediaCodec {
             }
         };
 
-        decoder.configure(&format, raw_native_window)?;
+        decoder.configure(&format, window)?;
         decoder.read_output_format();
         decoder.start()?;
         Ok(decoder)
@@ -101,10 +102,10 @@ impl MediaCodec {
 
     pub(crate) fn set_output_surface(
         &self,
-        raw_native_window: NonNull<ANativeWindow>,
+        window: &NativeWindow,
     ) -> Result<(), MediaStatus> {
         unsafe {
-            AMediaCodec_setOutputSurface(self.as_inner(), raw_native_window.as_ptr()).success()
+            AMediaCodec_setOutputSurface(self.as_inner(), window.as_inner()).success()
         }
     }
 
@@ -164,13 +165,13 @@ impl MediaCodec {
     fn configure(
         &mut self,
         format: &MediaFormat,
-        raw_native_window: NonNull<ANativeWindow>,
+        window: &NativeWindow,
     ) -> Result<(), MediaStatus> {
         unsafe {
             AMediaCodec_configure(
                 self.as_inner(),
                 format.as_inner(),
-                raw_native_window.as_ptr(),
+                window.as_inner(),
                 std::ptr::null_mut(),
                 0,
             )
