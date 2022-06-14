@@ -32,7 +32,7 @@ impl EncoderOutput {
         let index = self.occupied_indices_receiver.recv().context(ERR_LABEL)?;
         self.encoder.buffers[index]
             .event_obj
-            .wait()
+            .blocking_wait()
             .context(ERR_LABEL)?;
 
         let mut lock_params: nvenc_sys::NV_ENC_LOCK_BITSTREAM =

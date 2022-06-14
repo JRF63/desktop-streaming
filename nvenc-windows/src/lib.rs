@@ -10,7 +10,7 @@ use guids::*;
 macro_rules! nvenc_function {
     ($fn:expr, $($arg:expr),*) => {
         let status = ($fn.unwrap_or_else(|| std::hint::unreachable_unchecked()))($($arg,)*);
-        if let Some(error) = crate::error::NvEncError::new(status) {
+        if let Some(error) = crate::error::NvEncError::from_nvenc_status(status) {
             return Err(error.into());
         }
     }
@@ -188,3 +188,5 @@ impl From<nvenc_sys::NV_ENC_TUNING_INFO> for TuningInfo {
 }
 
 pub use encoder::create_encoder;
+pub use error::NvEncError;
+pub type Result<T> = std::result::Result<T, NvEncError>;

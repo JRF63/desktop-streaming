@@ -2,9 +2,9 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    println!("cargo:rerun-if-changed=nvEncodeAPI.h");
+    println!("cargo:rerun-if-changed=headers/11_1/nvEncodeAPI.h");
     let bindings = bindgen::Builder::default()
-        .header("nvEncodeAPI.h")
+        .header("headers/11_1/nvEncodeAPI.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .layout_tests(false)
         .default_enum_style(bindgen::EnumVariation::Rust { non_exhaustive: true })

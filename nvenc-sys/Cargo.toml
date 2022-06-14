@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [build-dependencies]
-bindgen = "0.53"
+bindgen = "0.60.1"
 
 [dependencies.windows]
-version = "0.37"
+version = "0.37.0"
 features = [
     "Win32_Foundation",
     "Win32_System_LibraryLoader"

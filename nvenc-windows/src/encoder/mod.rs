@@ -4,7 +4,7 @@ mod output;
 mod queries;
 
 use self::init::*;
-use crate::{error::NvEncError, nvenc_function, Codec, EncoderPreset, TuningInfo};
+use crate::{Result, nvenc_function, Codec, EncoderPreset, TuningInfo, util::IntoNvEncBufferFormat};
 use input::{EncoderInput, EncoderInputReturn};
 use output::EncoderOutput;
 use std::{cell::UnsafeCell, mem::MaybeUninit, os::raw::c_void, ptr::NonNull, sync::Arc};
@@ -13,7 +13,7 @@ use windows::Win32::Graphics::{
     Dxgi::DXGI_OUTDUPL_DESC,
 };
 
-pub type Result<T> = std::result::Result<T, NvEncError>;
+use crate::os::windows::{Library, EventObject, create_texture_buffer};
 
 pub(crate) struct EncoderBuffers {
     registered_resource: NonNull<c_void>,
@@ -119,7 +119,7 @@ impl NvidiaEncoder {
                     register_resource(&functions, raw_encoder, input_textures.clone(), i as u32)?;
                 let output_ptr = create_output_buffers(&functions, raw_encoder)?;
                 let event_obj = EventObject::new()?;
-                register_async_event(&functions, raw_encoder, &event_obj);
+                register_async_event(&functions, raw_encoder, &event_obj)?;
 
                 buffers.push(EncoderBuffers {
                     registered_resource,
@@ -188,6 +188,7 @@ impl EncoderParams {
                 h264_config.set_disableSVCPrefixNalu(1);
                 // SPS/PPS would be manually given to the decoder
                 h264_config.set_disableSPSPPS(1);
+                // TODO: disable outputAUD?
             }
             Codec::Hevc => {
                 let hevc_config = unsafe { &mut encoder_config.encodeCodecConfig.hevcConfig };
@@ -198,6 +199,7 @@ impl EncoderParams {
                 hevc_config.set_enableAlphaLayerEncoding(0);
                 // VPS/SPS/PPS would be manually given to the decoder
                 hevc_config.set_disableSPSPPS(1);
+                // TODO: disable outputAUD?
             }
         }
 
@@ -208,14 +210,15 @@ impl EncoderParams {
         init_params.presetGUID = preset.into();
         init_params.encodeWidth = display_desc.ModeDesc.Width;
         init_params.encodeHeight = display_desc.ModeDesc.Height;
-        init_params.darWidth = display_desc.ModeDesc.Width;
-        init_params.darHeight = display_desc.ModeDesc.Height;
+        let gcd = crate::util::gcd(display_desc.ModeDesc.Width, display_desc.ModeDesc.Height);
+        init_params.darWidth = display_desc.ModeDesc.Width / gcd;
+        init_params.darHeight = display_desc.ModeDesc.Height / gcd;
         init_params.frameRateNum = display_desc.ModeDesc.RefreshRate.Numerator;
         init_params.frameRateDen = display_desc.ModeDesc.RefreshRate.Denominator;
         init_params.enablePTD = 1; // TODO: Currently enabling picture type detection for convenience
         init_params.encodeConfig = Box::into_raw(encoder_config);
         init_params.tuningInfo = tuning_info.into();
-        init_params.bufferFormat = crate::util::dxgi_to_nv_format(display_desc.ModeDesc.Format);
+        init_params.bufferFormat = display_desc.ModeDesc.Format.into_nvenc_buffer_format();
 
         // Settings for optimal performance same as above
         init_params.enableEncodeAsync = 1;

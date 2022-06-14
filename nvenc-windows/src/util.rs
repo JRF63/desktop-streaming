@@ -13,3 +13,36 @@ pub(crate) fn dxgi_to_nv_format(format: DXGI_FORMAT) -> nvenc_sys::NV_ENC_BUFFER
         _ => nvenc_sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_UNDEFINED,
     }
 }
+
+pub(crate) trait IntoNvEncBufferFormat {
+    fn into_nvenc_buffer_format(&self) -> nvenc_sys::NV_ENC_BUFFER_FORMAT;
+}
+
+// https://en.wikipedia.org/wiki/Binary_GCD_algorithm
+pub(crate) fn gcd(mut u: u32, mut v: u32) -> u32 {
+    use std::cmp::min;
+    use std::mem::swap;
+
+    if u == 0 {
+        return v;
+    } else if v == 0 {
+        return u;
+    }
+
+    let i = u.trailing_zeros();
+    u >>= i;
+    let j = v.trailing_zeros();
+    v >>= j;
+    let k = min(i, j);
+
+    loop {
+        if u > v {
+            swap(&mut u, &mut v);
+        }
+        v -= u;
+        if v == 0 {
+            return u << k;
+        }
+        v >>= v.trailing_zeros();
+    }
+}
