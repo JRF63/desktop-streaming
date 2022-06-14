@@ -1,4 +1,4 @@
-use super::{EncoderParams, NvidiaEncoder, Result};
+use super::{config::EncoderParams, NvidiaEncoder, Result};
 use crate::nvenc_function;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use std::{mem::MaybeUninit, sync::Arc};

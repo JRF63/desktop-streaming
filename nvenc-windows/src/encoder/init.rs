@@ -1,18 +1,25 @@
-use crate::{error::NvEncError, nvenc_function, util::IntoNvEncBufferFormat, Result};
+use crate::{
+    error::NvEncError, nvenc_function, util::IntoNvEncBufferFormat, util::NvEncDevice, Result,
+};
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
-use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
+use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
 use crate::os::windows::{EventObject, Library};
 
 /// Checks if the user's NvEncAPI version is supported.
-pub(crate) fn is_version_supported(lib: &Library) -> anyhow::Result<bool> {
+pub(crate) fn is_version_supported(lib: &Library) -> Result<bool> {
     let mut version: u32 = 0;
     unsafe {
-        let get_max_supported_version: unsafe extern "C" fn(*mut u32) -> nvenc_sys::NVENCSTATUS =
-            std::mem::transmute(lib.fn_ptr("NvEncodeAPIGetMaxSupportedVersion")?);
+        let fn_ptr = lib
+            .fn_ptr("NvEncodeAPIGetMaxSupportedVersion")
+            .or(Err(NvEncError::GetMaxSupportedVersionLoadingFailed))?;
+
+        type GetMaxSupportedVersion = unsafe extern "C" fn(*mut u32) -> nvenc_sys::NVENCSTATUS;
+        let get_max_supported_version: GetMaxSupportedVersion = std::mem::transmute(fn_ptr);
+
         let status = get_max_supported_version(&mut version);
         if let Some(error) = NvEncError::from_nvenc_status(status) {
-            return Err(error.into());
+            return Err(error);
         }
     }
     let major_version = version >> 4;
@@ -35,56 +42,97 @@ pub(crate) fn get_function_list(lib: &Library) -> Result<nvenc_sys::NV_ENCODE_AP
         // Set the version of the function list struct
         (&mut (*fn_list.as_mut_ptr())).version = nvenc_sys::NV_ENCODE_API_FUNCTION_LIST_VER;
 
-        if let Ok(fn_ptr) = lib.fn_ptr("NvEncodeAPICreateInstance") {
-            let create_instance: unsafe extern "C" fn(
-                *mut nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-            ) -> nvenc_sys::NVENCSTATUS = std::mem::transmute(fn_ptr);
+        let fn_ptr = lib
+            .fn_ptr("NvEncodeAPICreateInstance")
+            .or(Err(NvEncError::CreateInstanceLoadingFailed))?;
 
-            let status = create_instance(fn_list.as_mut_ptr());
-            if let Some(error) = NvEncError::from_nvenc_status(status) {
-                return Err(error.into());
-            }
-            fn_list.assume_init()
-        } else {
-            return Err(NvEncError::FunctionListLoadingFailed);
+        type CreateInstance = unsafe extern "C" fn(
+            *mut nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
+        ) -> nvenc_sys::NVENCSTATUS;
+        let create_instance: CreateInstance = std::mem::transmute(fn_ptr);
+
+        let status = create_instance(fn_list.as_mut_ptr());
+        if let Some(error) = NvEncError::from_nvenc_status(status) {
+            return Err(error);
         }
+        fn_list.assume_init()
     };
 
-    // The function list was initialized with zero, so this should not be a null pointer when
-    // the call to `NvEncodeAPICreateInstance` succeeded
-    if fn_list.nvEncOpenEncodeSession.is_some() {
-        Ok(fn_list)
-    } else {
-        Err(NvEncError::MalformedFunctionList)
+    // Test all the pointers since the `nvenc_function!` macro is doing `unwrap_unchecked`
+    let test_function_pointers_for_nulls = || -> Option<()> {
+        fn_list.nvEncOpenEncodeSession?;
+        fn_list.nvEncGetEncodeGUIDCount?;
+        fn_list.nvEncGetEncodeProfileGUIDCount?;
+        fn_list.nvEncGetEncodeProfileGUIDs?;
+        fn_list.nvEncGetEncodeGUIDs?;
+        fn_list.nvEncGetInputFormatCount?;
+        fn_list.nvEncGetInputFormats?;
+        fn_list.nvEncGetEncodeCaps?;
+        fn_list.nvEncGetEncodePresetCount?;
+        fn_list.nvEncGetEncodePresetGUIDs?;
+        fn_list.nvEncGetEncodePresetConfig?;
+        fn_list.nvEncInitializeEncoder?;
+        fn_list.nvEncCreateInputBuffer?;
+        fn_list.nvEncDestroyInputBuffer?;
+        fn_list.nvEncCreateBitstreamBuffer?;
+        fn_list.nvEncDestroyBitstreamBuffer?;
+        fn_list.nvEncEncodePicture?;
+        fn_list.nvEncLockBitstream?;
+        fn_list.nvEncUnlockBitstream?;
+        fn_list.nvEncLockInputBuffer?;
+        fn_list.nvEncUnlockInputBuffer?;
+        fn_list.nvEncGetEncodeStats?;
+        fn_list.nvEncGetSequenceParams?;
+        fn_list.nvEncRegisterAsyncEvent?;
+        fn_list.nvEncUnregisterAsyncEvent?;
+        fn_list.nvEncMapInputResource?;
+        fn_list.nvEncUnmapInputResource?;
+        fn_list.nvEncDestroyEncoder?;
+        fn_list.nvEncInvalidateRefFrames?;
+        fn_list.nvEncOpenEncodeSessionEx?;
+        fn_list.nvEncRegisterResource?;
+        fn_list.nvEncUnregisterResource?;
+        fn_list.nvEncReconfigureEncoder?;
+        fn_list.nvEncCreateMVBuffer?;
+        fn_list.nvEncDestroyMVBuffer?;
+        fn_list.nvEncRunMotionEstimationOnly?;
+        fn_list.nvEncGetLastErrorString?;
+        fn_list.nvEncSetIOCudaStreams?;
+        fn_list.nvEncGetEncodePresetConfigEx?;
+        fn_list.nvEncGetSequenceParamEx?;
+        Some(())
+    };
+
+    match test_function_pointers_for_nulls() {
+        Some(_) => Ok(fn_list),
+        None => Err(NvEncError::MalformedFunctionList),
     }
 }
 
 /// Start an encoding session.
-pub(crate) fn open_encode_session(
+pub(crate) fn open_encode_session<T: NvEncDevice>(
     functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    device: ID3D11Device,
+    device: &T,
 ) -> Result<NonNull<c_void>> {
-    let mut session_params: nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS =
-        unsafe { MaybeUninit::zeroed().assume_init() };
-    session_params.version = nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER;
-    session_params.deviceType = nvenc_sys::NV_ENC_DEVICE_TYPE::NV_ENC_DEVICE_TYPE_DIRECTX;
-    session_params.device = unsafe { std::mem::transmute(device) };
-    session_params.apiVersion = nvenc_sys::NVENCAPI_VERSION;
-
     let mut raw_encoder: *mut c_void = std::ptr::null_mut();
-    let status = unsafe {
-        (functions.nvEncOpenEncodeSessionEx.unwrap_unchecked())(
-            &mut session_params,
-            &mut raw_encoder,
-        )
-    };
+    unsafe {
+        let mut session_params: nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS =
+            MaybeUninit::zeroed().assume_init();
+        session_params.version = nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER;
+        session_params.deviceType = T::device_type();
+        session_params.device = device.as_ptr();
+        session_params.apiVersion = nvenc_sys::NVENCAPI_VERSION;
 
-    match NvEncError::from_nvenc_status(status) {
-        Some(error) => Err(error.into()),
-        None => match NonNull::new(raw_encoder) {
-            Some(ptr) => Ok(ptr),
-            None => Err(NvEncError::OpenEncodeSessionFailed),
-        },
+        nvenc_function!(
+            functions.nvEncOpenEncodeSessionEx,
+            &mut session_params,
+            &mut raw_encoder
+        );
+    }
+
+    match NonNull::new(raw_encoder) {
+        Some(ptr) => Ok(ptr),
+        None => Err(NvEncError::OpenEncodeSessionFailed),
     }
 }
 
@@ -131,10 +179,10 @@ pub(crate) fn register_resource(
     texture: ID3D11Texture2D,
     subresource_index: u32,
 ) -> Result<NonNull<c_void>> {
-    let mut texture_desc = MaybeUninit::uninit();
     let texture_desc = unsafe {
-        texture.GetDesc(texture_desc.as_mut_ptr());
-        texture_desc.assume_init()
+        let mut tmp = MaybeUninit::uninit();
+        texture.GetDesc(tmp.as_mut_ptr());
+        tmp.assume_init()
     };
 
     let mut register_resource_params = nvenc_sys::NV_ENC_REGISTER_RESOURCE {

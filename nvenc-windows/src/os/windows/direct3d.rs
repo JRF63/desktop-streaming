@@ -6,6 +6,16 @@ use windows::Win32::Graphics::{
     Dxgi::{Common::DXGI_SAMPLE_DESC, DXGI_OUTDUPL_DESC},
 };
 
+impl crate::util::NvEncDevice for ID3D11Device {
+    fn device_type() -> nvenc_sys::NV_ENC_DEVICE_TYPE {
+        nvenc_sys::NV_ENC_DEVICE_TYPE::NV_ENC_DEVICE_TYPE_DIRECTX
+    }
+
+    fn as_ptr(&self) -> *mut std::os::raw::c_void {
+        unsafe { std::mem::transmute(self.clone()) }
+    }
+}
+
 /// Creates an `ID3D11Texture2D` where the duplicated frames can be copied to.
 pub(crate) fn create_texture_buffer(
     device: &ID3D11Device,

@@ -1,8 +1,8 @@
 mod event;
 mod format;
 mod library;
-mod texture;
+mod direct3d;
 
 pub(crate) use library::Library;
 pub(crate) use event::EventObject;
-pub(crate) use texture::create_texture_buffer;
+pub(crate) use direct3d::create_texture_buffer;

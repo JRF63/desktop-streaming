@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[repr(i32)]
 #[derive(thiserror::Error, Debug)]
 pub enum NvEncError {
@@ -64,8 +62,11 @@ pub enum NvEncError {
     LibraryNotSigned = 0x7fffffff,
     #[error("Loading the shared library for `nvEncodeAPI64` failed.")]
     SharedLibraryLoadingFailed = 0x7fffffff - 1,
-    #[error("Locating `NvEncodeAPICreateInstance` in the shared library failed.")]
-    FunctionListLoadingFailed = 0x7fffffff - 2,
+    #[error("Unable to locate `NvEncodeAPIGetMaxSupportedVersion` in the shared library.")]
+    GetMaxSupportedVersionLoadingFailed = 0x7fffffff - 2,
+    #[error("Unable to locate `NvEncodeAPICreateInstance` in the shared library.")]
+    CreateInstanceLoadingFailed = 0x7fffffff - 3,
+    
     #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
     MalformedFunctionList = 0x7fffffff - 111,
     #[error("`nvEncOpenEncodeSessionEx` returned a null pointer.")]

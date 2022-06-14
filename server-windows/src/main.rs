@@ -14,7 +14,7 @@ fn main() {
     const NUM_FRAMES: usize = 120;
 
     let codec = Codec::H264;
-    let preset = EncoderPreset::P2;
+    let preset = EncoderPreset::P7;
     let tuning_info = TuningInfo::UltraLowLatency;
 
     let device = device::create_d3d11_device().unwrap();
@@ -36,17 +36,17 @@ fn main() {
                 lock.outputTimeStamp, lock.bitstreamSizeInBytes
             );
 
-            let mut file = File::create(format!("{}.h264", i)).unwrap();
-            i += 1;
+            // let mut file = File::create(format!("{}.h264", i)).unwrap();
+            // i += 1;
 
-            let slice = unsafe {
-                std::slice::from_raw_parts(
-                    lock.bitstreamBufferPtr as *const u8,
-                    lock.bitstreamSizeInBytes as usize,
-                )
-            };
+            // let slice = unsafe {
+            //     std::slice::from_raw_parts(
+            //         lock.bitstreamBufferPtr as *const u8,
+            //         lock.bitstreamSizeInBytes as usize,
+            //     )
+            // };
 
-            file.write_all(slice).unwrap();
+            // file.write_all(slice).unwrap();
         }) {}
         println!("Exiting");
     });
@@ -58,6 +58,7 @@ fn main() {
     }
 
     for _i in 0..NUM_FRAMES {
+        let _ = duplicator.release_frame();
         let (resource, _x) = loop {
             match duplicator.acquire_frame() {
                 Ok(r) => break r,
@@ -77,7 +78,6 @@ fn main() {
 
         let index = encoder_input.get_index();
         encoder_input.copy_input_frame(resource, index);
-        duplicator.release_frame().unwrap();
         encoder_input.encode_copied_frame(index).unwrap();
         encoder_input.return_index(index);
     }

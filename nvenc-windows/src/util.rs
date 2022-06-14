@@ -1,21 +1,13 @@
-use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R10G10B10A2_UNORM,
-    DXGI_FORMAT_R8G8B8A8_UNORM,
-};
-
-pub(crate) fn dxgi_to_nv_format(format: DXGI_FORMAT) -> nvenc_sys::NV_ENC_BUFFER_FORMAT {
-    match format {
-        DXGI_FORMAT_B8G8R8A8_UNORM => nvenc_sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ARGB,
-        DXGI_FORMAT_R10G10B10A2_UNORM => {
-            nvenc_sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ABGR10
-        }
-        DXGI_FORMAT_R8G8B8A8_UNORM => nvenc_sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ABGR,
-        _ => nvenc_sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_UNDEFINED,
-    }
-}
+use std::os::raw::c_void;
 
 pub(crate) trait IntoNvEncBufferFormat {
     fn into_nvenc_buffer_format(&self) -> nvenc_sys::NV_ENC_BUFFER_FORMAT;
+}
+
+pub(crate) trait NvEncDevice {
+    fn device_type() -> nvenc_sys::NV_ENC_DEVICE_TYPE;
+
+    fn as_ptr(&self) -> *mut c_void;
 }
 
 // https://en.wikipedia.org/wiki/Binary_GCD_algorithm

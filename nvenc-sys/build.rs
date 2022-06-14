@@ -7,6 +7,7 @@ fn main() {
         .header("headers/11_1/nvEncodeAPI.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .layout_tests(false)
+        .derive_debug(true)
         .default_enum_style(bindgen::EnumVariation::Rust { non_exhaustive: true })
         .rustified_enum("_NVENCSTATUS")
         .generate()
