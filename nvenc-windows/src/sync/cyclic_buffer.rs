@@ -1,7 +1,7 @@
 use super::cache_aligned::CacheAligned;
 use std::{
     cell::UnsafeCell,
-    mem::{MaybeUninit},
+    mem::MaybeUninit,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -19,6 +19,9 @@ pub(crate) struct CyclicBuffer<T, const N: usize> {
     /// Array that holds the items
     buffer: [UnsafeCell<CacheAligned<T>>; N],
 }
+
+unsafe impl<T, const N: usize> Send for CyclicBuffer<T, N> where T: Send {}
+unsafe impl<T, const N: usize> Sync for CyclicBuffer<T, N> where T: Send {}
 
 impl<T, const N: usize> CyclicBuffer<T, N> {
     /// Creates a new `CyclicBuffer`.
@@ -46,9 +49,10 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
     where
         F: FnMut(usize, &mut T),
     {
-        // `CyclicBuffer` is purposely not `Send` - the value that will be read here is from a
-        // previous `Ordering::Release` store by the same thread
-        let head = self.head.load(Ordering::Relaxed);
+        // `Ordering::Release` would be possible if `CyclicBuffer` is purposely not `Send` since
+        // in that case, the value read here would only be from the last `Ordering::Release` on the
+        // same thread.
+        let head = self.head.load(Ordering::Acquire);
         loop {
             let tail = self.tail.load(Ordering::Acquire);
 
@@ -75,8 +79,8 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
     where
         F: FnMut(&T) -> Result<(), E>,
     {
-        // `Ordering::Relaxed` has the same reasoning as on `modify`
-        let tail = self.tail.load(Ordering::Relaxed);
+        // Same reasoning as on `modify`
+        let tail = self.tail.load(Ordering::Acquire);
         loop {
             let head = self.head.load(Ordering::Acquire);
 

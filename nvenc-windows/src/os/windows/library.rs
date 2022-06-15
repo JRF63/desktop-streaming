@@ -23,6 +23,7 @@ use windows::{
 };
 
 /// RAII wrapper for a Windows library HANDLE.
+// NOTE: This is a `Send` since a `HANDLE` is `Send`
 #[repr(transparent)]
 pub(crate) struct Library(NonZeroIsize);
 

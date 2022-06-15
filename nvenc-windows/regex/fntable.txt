@@ -1,0 +1,89 @@
+pub struct _NV_ENCODE_API_FUNCTION_LIST {
+    #[doc = "< [in]: Client should pass NV_ENCODE_API_FUNCTION_LIST_VER."]
+    pub version: u32,
+    #[doc = "< [in]: Reserved and should be set to 0."]
+    pub reserved: u32,
+    #[doc = "< [out]: Client should access ::NvEncOpenEncodeSession() API through this pointer."]
+    pub nvEncOpenEncodeSession: PNVENCOPENENCODESESSION,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodeGUIDCount() API through this pointer."]
+    pub nvEncGetEncodeGUIDCount: PNVENCGETENCODEGUIDCOUNT,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodeProfileGUIDCount() API through this pointer."]
+    pub nvEncGetEncodeProfileGUIDCount: PNVENCGETENCODEPRESETCOUNT,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodeProfileGUIDs() API through this pointer."]
+    pub nvEncGetEncodeProfileGUIDs: PNVENCGETENCODEPRESETGUIDS,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodeGUIDs() API through this pointer."]
+    pub nvEncGetEncodeGUIDs: PNVENCGETENCODEGUIDS,
+    #[doc = "< [out]: Client should access ::NvEncGetInputFormatCount() API through this pointer."]
+    pub nvEncGetInputFormatCount: PNVENCGETINPUTFORMATCOUNT,
+    #[doc = "< [out]: Client should access ::NvEncGetInputFormats() API through this pointer."]
+    pub nvEncGetInputFormats: PNVENCGETINPUTFORMATS,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodeCaps() API through this pointer."]
+    pub nvEncGetEncodeCaps: PNVENCGETENCODECAPS,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodePresetCount() API through this pointer."]
+    pub nvEncGetEncodePresetCount: PNVENCGETENCODEPRESETCOUNT,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodePresetGUIDs() API through this pointer."]
+    pub nvEncGetEncodePresetGUIDs: PNVENCGETENCODEPRESETGUIDS,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodePresetConfig() API through this pointer."]
+    pub nvEncGetEncodePresetConfig: PNVENCGETENCODEPRESETCONFIG,
+    #[doc = "< [out]: Client should access ::NvEncInitializeEncoder() API through this pointer."]
+    pub nvEncInitializeEncoder: PNVENCINITIALIZEENCODER,
+    #[doc = "< [out]: Client should access ::NvEncCreateInputBuffer() API through this pointer."]
+    pub nvEncCreateInputBuffer: PNVENCCREATEINPUTBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncDestroyInputBuffer() API through this pointer."]
+    pub nvEncDestroyInputBuffer: PNVENCDESTROYINPUTBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncCreateBitstreamBuffer() API through this pointer."]
+    pub nvEncCreateBitstreamBuffer: PNVENCCREATEBITSTREAMBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncDestroyBitstreamBuffer() API through this pointer."]
+    pub nvEncDestroyBitstreamBuffer: PNVENCDESTROYBITSTREAMBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncEncodePicture() API through this pointer."]
+    pub nvEncEncodePicture: PNVENCENCODEPICTURE,
+    #[doc = "< [out]: Client should access ::NvEncLockBitstream() API through this pointer."]
+    pub nvEncLockBitstream: PNVENCLOCKBITSTREAM,
+    #[doc = "< [out]: Client should access ::NvEncUnlockBitstream() API through this pointer."]
+    pub nvEncUnlockBitstream: PNVENCUNLOCKBITSTREAM,
+    #[doc = "< [out]: Client should access ::NvEncLockInputBuffer() API through this pointer."]
+    pub nvEncLockInputBuffer: PNVENCLOCKINPUTBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncUnlockInputBuffer() API through this pointer."]
+    pub nvEncUnlockInputBuffer: PNVENCUNLOCKINPUTBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodeStats() API through this pointer."]
+    pub nvEncGetEncodeStats: PNVENCGETENCODESTATS,
+    #[doc = "< [out]: Client should access ::NvEncGetSequenceParams() API through this pointer."]
+    pub nvEncGetSequenceParams: PNVENCGETSEQUENCEPARAMS,
+    #[doc = "< [out]: Client should access ::NvEncRegisterAsyncEvent() API through this pointer."]
+    pub nvEncRegisterAsyncEvent: PNVENCREGISTERASYNCEVENT,
+    #[doc = "< [out]: Client should access ::NvEncUnregisterAsyncEvent() API through this pointer."]
+    pub nvEncUnregisterAsyncEvent: PNVENCUNREGISTERASYNCEVENT,
+    #[doc = "< [out]: Client should access ::NvEncMapInputResource() API through this pointer."]
+    pub nvEncMapInputResource: PNVENCMAPINPUTRESOURCE,
+    #[doc = "< [out]: Client should access ::NvEncUnmapInputResource() API through this pointer."]
+    pub nvEncUnmapInputResource: PNVENCUNMAPINPUTRESOURCE,
+    #[doc = "< [out]: Client should access ::NvEncDestroyEncoder() API through this pointer."]
+    pub nvEncDestroyEncoder: PNVENCDESTROYENCODER,
+    #[doc = "< [out]: Client should access ::NvEncInvalidateRefFrames() API through this pointer."]
+    pub nvEncInvalidateRefFrames: PNVENCINVALIDATEREFFRAMES,
+    #[doc = "< [out]: Client should access ::NvEncOpenEncodeSession() API through this pointer."]
+    pub nvEncOpenEncodeSessionEx: PNVENCOPENENCODESESSIONEX,
+    #[doc = "< [out]: Client should access ::NvEncRegisterResource() API through this pointer."]
+    pub nvEncRegisterResource: PNVENCREGISTERRESOURCE,
+    #[doc = "< [out]: Client should access ::NvEncUnregisterResource() API through this pointer."]
+    pub nvEncUnregisterResource: PNVENCUNREGISTERRESOURCE,
+    #[doc = "< [out]: Client should access ::NvEncReconfigureEncoder() API through this pointer."]
+    pub nvEncReconfigureEncoder: PNVENCRECONFIGUREENCODER,
+    pub reserved1: *mut ::std::os::raw::c_void,
+    #[doc = "< [out]: Client should access ::NvEncCreateMVBuffer API through this pointer."]
+    pub nvEncCreateMVBuffer: PNVENCCREATEMVBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncDestroyMVBuffer API through this pointer."]
+    pub nvEncDestroyMVBuffer: PNVENCDESTROYMVBUFFER,
+    #[doc = "< [out]: Client should access ::NvEncRunMotionEstimationOnly API through this pointer."]
+    pub nvEncRunMotionEstimationOnly: PNVENCRUNMOTIONESTIMATIONONLY,
+    #[doc = "< [out]: Client should access ::nvEncGetLastErrorString API through this pointer."]
+    pub nvEncGetLastErrorString: PNVENCGETLASTERROR,
+    #[doc = "< [out]: Client should access ::nvEncSetIOCudaStreams API through this pointer."]
+    pub nvEncSetIOCudaStreams: PNVENCSETIOCUDASTREAMS,
+    #[doc = "< [out]: Client should access ::NvEncGetEncodePresetConfigEx() API through this pointer."]
+    pub nvEncGetEncodePresetConfigEx: PNVENCGETENCODEPRESETCONFIGEX,
+    #[doc = "< [out]: Client should access ::NvEncGetSequenceParamEx() API through this pointer."]
+    pub nvEncGetSequenceParamEx: PNVENCGETSEQUENCEPARAMEX,
+    #[doc = "< [in]:  Reserved and must be set to NULL"]
+    pub reserved2: [*mut ::std::os::raw::c_void; 277usize],
+}

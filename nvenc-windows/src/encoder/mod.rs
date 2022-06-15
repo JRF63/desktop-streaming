@@ -4,6 +4,7 @@ mod init;
 mod output;
 mod queries;
 mod shared;
+mod raw;
 
 use self::init::*;
 use crate::{nvenc_function, sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
@@ -118,8 +119,6 @@ pub struct NvidiaEncoder<const BUF_SIZE: usize> {
     pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
     encoder_params: EncoderParams,
 }
-
-unsafe impl<const BUF_SIZE: usize> Send for NvidiaEncoder<BUF_SIZE> {}
 
 impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     pub(crate) fn new(
