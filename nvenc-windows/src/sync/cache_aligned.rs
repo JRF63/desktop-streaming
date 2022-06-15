@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 
 #[repr(align(128))]
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(super) struct CacheAligned<T>(T);
+pub(crate) struct CacheAligned<T>(T);
 
 impl<T> Deref for CacheAligned<T> {
     type Target = T;
@@ -25,10 +25,5 @@ impl<T> CacheAligned<T> {
     #[inline]
     pub(super) fn new(inner: T) -> Self {
         CacheAligned(inner)
-    }
-
-    #[inline]
-    pub(super) fn into_inner(self) -> T {
-        self.0
     }
 }

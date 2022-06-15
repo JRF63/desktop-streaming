@@ -23,7 +23,7 @@ fn main() {
     let display_desc = duplicator.desc();
 
     let (mut encoder_input, encoder_output) =
-        nvenc_windows::create_encoder(device, &display_desc, codec, preset, tuning_info, buf_size);
+        nvenc_windows::create_encoder(device, &display_desc, codec, preset, tuning_info);
 
     let a = std::thread::spawn(move || {
         
@@ -59,7 +59,7 @@ fn main() {
 
     for _i in 0..NUM_FRAMES {
         let _ = duplicator.release_frame();
-        let (resource, _x) = loop {
+        let (resource, info) = loop {
             match duplicator.acquire_frame() {
                 Ok(r) => break r,
                 Err(e) => {
@@ -76,10 +76,7 @@ fn main() {
             }
         };
 
-        let index = encoder_input.get_index();
-        encoder_input.copy_input_frame(resource, index);
-        encoder_input.encode_copied_frame(index).unwrap();
-        encoder_input.return_index(index);
+        encoder_input.encode_frame(resource, info.LastPresentTime as u32).unwrap();
     }
 
     std::mem::drop(encoder_input);

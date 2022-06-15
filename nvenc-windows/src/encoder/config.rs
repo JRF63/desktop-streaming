@@ -129,9 +129,9 @@ impl EncoderParams {
         Ok(Box::new(preset_config_params.presetCfg))
     }
 
-    pub(crate) fn encode_config(&self) -> &nvenc_sys::NV_ENC_CONFIG {
-        unsafe { &*self.init_params().encodeConfig }
-    }
+    // pub(crate) fn encode_config(&self) -> &nvenc_sys::NV_ENC_CONFIG {
+    //     unsafe { &*self.init_params().encodeConfig }
+    // }
 
     pub(crate) fn encode_config_mut(&mut self) -> &mut nvenc_sys::NV_ENC_CONFIG {
         unsafe { &mut *self.init_params_mut().encodeConfig }

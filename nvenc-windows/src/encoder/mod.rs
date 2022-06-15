@@ -5,19 +5,11 @@ mod output;
 mod queries;
 
 use self::init::*;
-use crate::{nvenc_function, Codec, EncoderPreset, Result, TuningInfo};
+use crate::{nvenc_function, sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
 use config::EncoderParams;
-use input::{EncoderInput, EncoderInputReturn};
+use input::EncoderInput;
 use output::EncoderOutput;
-use std::{
-    cell::UnsafeCell,
-    os::raw::c_void,
-    ptr::NonNull,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
+use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull, sync::Arc};
 use windows::Win32::Graphics::{
     Direct3D11::{ID3D11Device, ID3D11Texture2D},
     Dxgi::DXGI_OUTDUPL_DESC,
@@ -25,9 +17,11 @@ use windows::Win32::Graphics::{
 
 use crate::os::windows::{create_texture_buffer, EventObject, Library};
 
+const BUFFER_SIZE: usize = 8;
+
 pub(crate) struct EncoderBuffers {
     registered_resource: NonNull<c_void>,
-    input_ptr: UnsafeCell<nvenc_sys::NV_ENC_INPUT_PTR>,
+    input_ptr: nvenc_sys::NV_ENC_INPUT_PTR,
     output_ptr: NonNull<c_void>,
     event_obj: EventObject,
 }
@@ -44,7 +38,7 @@ impl EncoderBuffers {
         unsafe {
             (functions.nvEncUnmapInputResource.unwrap_unchecked())(
                 raw_encoder.as_ptr(),
-                *self.input_ptr.get(),
+                self.input_ptr,
             );
             (functions.nvEncUnregisterResource.unwrap_unchecked())(
                 raw_encoder.as_ptr(),
@@ -64,12 +58,7 @@ pub(crate) struct NvidiaEncoder {
     functions: nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
     input_textures: ID3D11Texture2D,
 
-    /// Index of the writer
-    head: AtomicUsize,
-    /// Index of the reader
-    tail: AtomicUsize,
-    /// Buffer
-    buffers: Vec<EncoderBuffers>,
+    buffer: CyclicBuffer<EncoderBuffers, BUFFER_SIZE>,
 
     #[allow(dead_code)]
     library: Library,
@@ -77,8 +66,8 @@ pub(crate) struct NvidiaEncoder {
 
 impl Drop for NvidiaEncoder {
     fn drop(&mut self) {
-        for buffer in &mut self.buffers {
-            buffer.cleanup(&self.functions, self.raw_encoder);
+        for buffer in self.buffer.get_mut() {
+            buffer.get_mut().cleanup(&self.functions, self.raw_encoder);
         }
         unsafe {
             (self.functions.nvEncDestroyEncoder.unwrap())(self.raw_encoder.as_ptr());
@@ -97,7 +86,6 @@ impl NvidiaEncoder {
         codec: Codec,
         preset: EncoderPreset,
         tuning_info: TuningInfo,
-        buf_size: usize,
     ) -> anyhow::Result<(Self, EncoderParams)> {
         let library = Library::load("nvEncodeAPI64.dll")?;
         if !is_version_supported(&library)? {
@@ -124,105 +112,54 @@ impl NvidiaEncoder {
             );
         }
 
-        let input_textures = create_texture_buffer(&device, display_desc, buf_size)?;
-
-        let mut buffers = Vec::with_capacity(buf_size);
+        let input_textures = create_texture_buffer(&device, display_desc, BUFFER_SIZE)?;
 
         // Using a closure for graceful cleanup
-        let mut inner = || -> anyhow::Result<()> {
-            for i in 0..buf_size {
-                let registered_resource =
-                    register_resource(&functions, raw_encoder, input_textures.clone(), i as u32)?;
-                let output_ptr = create_output_buffers(&functions, raw_encoder)?;
-                let event_obj = EventObject::new()?;
-                register_async_event(&functions, raw_encoder, &event_obj)?;
-
-                buffers.push(EncoderBuffers {
-                    registered_resource,
-                    input_ptr: UnsafeCell::new(std::ptr::null_mut()),
-                    output_ptr,
-                    event_obj,
-                });
+        let inner = || -> anyhow::Result<[EncoderBuffers; BUFFER_SIZE]> {
+            let mut buffer = MaybeUninit::<[EncoderBuffers; BUFFER_SIZE]>::uninit();
+            unsafe {
+                // Pointer to the start of the array's buffer
+                let mut ptr = (&mut *buffer.as_mut_ptr()).as_mut_ptr();
+                for i in 0..BUFFER_SIZE {
+                    let registered_resource = register_resource(
+                        &functions,
+                        raw_encoder,
+                        input_textures.clone(),
+                        i as u32,
+                    )?;
+                    let output_ptr = create_output_buffers(&functions, raw_encoder)?;
+                    let event_obj = EventObject::new()?;
+                    register_async_event(&functions, raw_encoder, &event_obj)?;
+                    ptr.write(EncoderBuffers {
+                        registered_resource,
+                        input_ptr: std::ptr::null_mut(),
+                        output_ptr,
+                        event_obj,
+                    });
+                    ptr = ptr.offset(1);
+                }
+                Ok(buffer.assume_init())
             }
-            Ok(())
         };
 
-        if let Err(e) = inner() {
-            for mut buffer in buffers {
-                buffer.cleanup(&functions, raw_encoder);
-            }
-            return Err(e);
-        }
+        // if let Err(e) = inner() {
+        //     for mut buffer in buffers {
+        //         buffer.get_mut().cleanup(&functions, raw_encoder);
+        //     }
+        //     return Err(e);
+        // }
+        let buffer = inner()?;
 
         Ok((
             NvidiaEncoder {
                 raw_encoder,
                 functions,
                 input_textures,
-                head: AtomicUsize::new(0),
-                tail: AtomicUsize::new(0),
-                buffers,
+                buffer: CyclicBuffer::new(buffer),
                 library,
             },
             encoder_params,
         ))
-    }
-
-    /// Modify an item on the buffer. Blocks if the buffer is full.
-    #[inline]
-    pub(super) fn modify<F>(&self, mut modify_op: F)
-    where
-        F: FnMut(&mut EncoderBuffers),
-    {
-        // `CyclicBuffer` is purposely not `Send` - the value that will be read here is from a
-        // previous `Ordering::Release` store by the same thread
-        let head = self.head.load(Ordering::Relaxed);
-        loop {
-            let tail = self.tail.load(Ordering::Acquire);
-
-            // Break if not full
-            if (head - tail) <= self.buffers.len() {
-                break;
-            } else {
-                std::thread::yield_now();
-            }
-        }
-
-        let index = head & (self.buffers.len() - 1);
-        unsafe {
-            let cell = self.buffers.get_unchecked(index);
-            // modify_op(&mut *cell.get());
-        }
-
-        self.head.store(head + 1, Ordering::Release);
-    }
-
-    /// Read an item on the buffer. Blocks if the buffer is empty.
-    #[inline]
-    pub(super) fn read<F>(&self, mut read_op: F)
-    where
-        F: FnMut(&EncoderBuffers),
-    {
-        // `Ordering::Relaxed` has the same reasoning as on `modify`
-        let tail = self.tail.load(Ordering::Relaxed);
-        loop {
-            let head = self.head.load(Ordering::Acquire);
-
-            // Break if not empty
-            if head != tail {
-                break;
-            } else {
-                std::thread::yield_now();
-            }
-        }
-
-        let index = tail & (self.buffers.len() - 1);
-        unsafe {
-            let cell = self.buffers.get_unchecked(index);
-            // read_op(&*cell.get());
-        }
-
-        self.tail.store(tail + 1, Ordering::Release);
     }
 }
 
@@ -232,7 +169,6 @@ pub fn create_encoder(
     codec: Codec,
     preset: EncoderPreset,
     tuning_info: TuningInfo,
-    buf_size: usize,
 ) -> (EncoderInput, EncoderOutput) {
     let mut device_context = None;
     unsafe {
@@ -240,22 +176,16 @@ pub fn create_encoder(
     }
 
     let (encoder, encoder_params) =
-        NvidiaEncoder::new(device, display_desc, codec, preset, tuning_info, buf_size).unwrap();
+        NvidiaEncoder::new(device, display_desc, codec, preset, tuning_info).unwrap();
     let encoder = Arc::new(encoder);
 
-    let EncoderInputReturn {
-        encoder_input,
-        avail_indices_sender,
-        occupied_indices_receiver,
-    } = EncoderInput::new(
+    let encoder_input = EncoderInput::new(
         encoder.clone(),
         device_context.unwrap(),
         encoder_params,
-        buf_size,
     );
 
-    let encoder_output =
-        EncoderOutput::new(encoder, occupied_indices_receiver, avail_indices_sender);
+    let encoder_output = EncoderOutput::new(encoder);
 
     (encoder_input, encoder_output)
 }

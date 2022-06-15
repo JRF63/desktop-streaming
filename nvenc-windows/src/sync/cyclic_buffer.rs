@@ -11,7 +11,7 @@ use std::{
 /// something must be written before it can be read and the item cannot be read again until after
 /// the next write.
 #[repr(C)]
-pub(super) struct CyclicBuffer<T, const N: usize> {
+pub(crate) struct CyclicBuffer<T, const N: usize> {
     /// Index of the writer
     head: AtomicUsize,
     /// Index of the reader
@@ -23,7 +23,7 @@ pub(super) struct CyclicBuffer<T, const N: usize> {
 impl<T, const N: usize> CyclicBuffer<T, N> {
     /// Creates a new `CyclicBuffer`.
     #[inline]
-    pub(super) fn new(buffer: [T; N]) -> Self {
+    pub(crate) fn new(buffer: [T; N]) -> Self {
         let mut tmp = MaybeUninit::<[UnsafeCell<CacheAligned<T>>; N]>::uninit();
         unsafe {
             // Pointer to the start of the array's buffer
@@ -42,9 +42,9 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
 
     /// Modify an item on the buffer. Blocks if the buffer is full.
     #[inline]
-    pub(super) fn modify<F>(&self, mut modify_op: F)
+    pub(crate) fn writer_access<F>(&self, mut modify_op: F)
     where
-        F: FnMut(&mut T),
+        F: FnMut(usize, &mut T),
     {
         // `CyclicBuffer` is purposely not `Send` - the value that will be read here is from a
         // previous `Ordering::Release` store by the same thread
@@ -63,7 +63,7 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
         let index = head & (N - 1);
         unsafe {
             let cell = self.buffer.get_unchecked(index);
-            modify_op(&mut *cell.get());
+            modify_op(index, &mut *cell.get());
         }
 
         self.head.store(head + 1, Ordering::Release);
@@ -71,9 +71,9 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
 
     /// Read an item on the buffer. Blocks if the buffer is empty.
     #[inline]
-    pub(super) fn read<F>(&self, mut read_op: F)
+    pub(crate) fn reader_access<F, E>(&self, mut read_op: F) -> Result<(), E>
     where
-        F: FnMut(&T),
+        F: FnMut(&T) -> Result<(), E>,
     {
         // `Ordering::Relaxed` has the same reasoning as on `modify`
         let tail = self.tail.load(Ordering::Relaxed);
@@ -91,9 +91,15 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
         let index = tail & (N - 1);
         unsafe {
             let cell = self.buffer.get_unchecked(index);
-            read_op(&*cell.get());
+            read_op(&*cell.get())?;
         }
 
         self.tail.store(tail + 1, Ordering::Release);
+        Ok(())
+    }
+
+    /// Returns the internal buffer. `&mut self` guarantees exclusive access from a single thread.
+    pub(crate) fn get_mut(&mut self) -> &mut [UnsafeCell<CacheAligned<T>>; N] {
+        &mut self.buffer
     }
 }
