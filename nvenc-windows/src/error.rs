@@ -72,8 +72,6 @@ pub enum NvEncError {
     
     #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
     MalformedFunctionList = 0x7fffffff - 111,
-    #[error("`nvEncOpenEncodeSessionEx` returned a null pointer.")]
-    OpenEncodeSessionFailed = 0x7fffffff - 11,
 }
 
 impl NvEncError {

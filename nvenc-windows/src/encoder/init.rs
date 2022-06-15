@@ -2,10 +2,10 @@ use crate::{error::NvEncError, nvenc_function, util::NvEncDevice, Result};
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
 
 // TODO: Make this a generic parameter
-use crate::os::windows::Library;
+use crate::os::windows::WindowsLibrary;
 
 /// Checks if the user's NvEncAPI version is supported.
-pub(crate) fn is_version_supported(lib: &Library) -> Result<bool> {
+pub(crate) fn is_version_supported(lib: &WindowsLibrary) -> Result<bool> {
     let mut version: u32 = 0;
     unsafe {
         let fn_ptr = lib
@@ -32,7 +32,7 @@ pub(crate) fn is_version_supported(lib: &Library) -> Result<bool> {
 }
 
 /// Load the struct containing the NvEncAPI function pointers.
-pub(crate) fn get_function_list(lib: &Library) -> Result<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST> {
+pub(crate) fn get_function_list(lib: &WindowsLibrary) -> Result<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST> {
     // Zeroes the version and setss all the function pointers to `None`
     let mut fn_list = MaybeUninit::<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST>::zeroed();
 
@@ -130,6 +130,6 @@ pub(crate) fn open_encode_session<T: NvEncDevice>(
 
     match NonNull::new(raw_encoder) {
         Some(ptr) => Ok(ptr),
-        None => Err(NvEncError::OpenEncodeSessionFailed),
+        None => Err(NvEncError::Generic),
     }
 }

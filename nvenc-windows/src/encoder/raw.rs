@@ -1,5 +1,29 @@
-use crate::{NvEncError, Result};
-use std::{os::raw::c_void, ptr::NonNull};
+use crate::{util::NvEncDevice, NvEncError, Result};
+use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
+
+/// Start an encoding session.
+fn open_encode_session<T: NvEncDevice>(
+    functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
+    device: &T,
+) -> Result<NonNull<c_void>> {
+    let mut raw_encoder: *mut c_void = std::ptr::null_mut();
+    unsafe {
+        let mut session_params: nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS =
+            MaybeUninit::zeroed().assume_init();
+        session_params.version = nvenc_sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER;
+        session_params.deviceType = T::device_type();
+        session_params.device = device.as_ptr();
+        session_params.apiVersion = nvenc_sys::NVENCAPI_VERSION;
+
+        let status =
+            (functions.nvEncOpenEncodeSessionEx.unwrap())(&mut session_params, &mut raw_encoder);
+        match NvEncError::from_nvenc_status(status) {
+            // Should not fail if `nvEncOpenEncodeSessionEx` succeeded
+            None => NonNull::new(raw_encoder).ok_or(NvEncError::Generic),
+            Some(err) => Err(err),
+        }
+    }
+}
 
 pub(crate) struct RawEncoder {
     encoder_ptr: NonNull<c_void>,
@@ -18,14 +42,14 @@ impl Drop for RawEncoder {
 }
 
 impl RawEncoder {
-    pub(crate) fn new(
-        encoder_ptr: NonNull<c_void>,
+    pub(crate) fn new<T: NvEncDevice>(
         functions: nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    ) -> Self {
-        RawEncoder {
-            encoder_ptr,
+        device: &T,
+    ) -> Result<Self> {
+        Ok(RawEncoder {
+            encoder_ptr: open_encode_session(&functions, device)?,
             functions,
-        }
+        })
     }
     pub(crate) fn get_encode_guid_count(&self, encode_guid_count: *mut u32) -> Result<()> {
         unsafe {

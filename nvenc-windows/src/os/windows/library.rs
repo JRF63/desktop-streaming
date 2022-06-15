@@ -25,9 +25,9 @@ use windows::{
 /// RAII wrapper for a Windows library HANDLE.
 // NOTE: This is a `Send` since a `HANDLE` is `Send`
 #[repr(transparent)]
-pub(crate) struct Library(NonZeroIsize);
+pub(crate) struct WindowsLibrary(NonZeroIsize);
 
-impl Drop for Library {
+impl Drop for WindowsLibrary {
     fn drop(&mut self) {
         unsafe {
             // Deliberately ignoring failure
@@ -36,7 +36,7 @@ impl Drop for Library {
     }
 }
 
-impl Library {
+impl WindowsLibrary {
     /// Open a .dll.
     pub(crate) fn load(lib_name: &str) -> crate::Result<Self> {
         if !is_system_library_signed(lib_name) {
@@ -53,7 +53,7 @@ impl Library {
             Ok(lib) => {
                 // SAFETY: `LoadLibraryExA` returns a non-null pointer on success
                 let nonzero = unsafe { NonZeroIsize::new_unchecked(lib.0) };
-                Ok(Library(nonzero))
+                Ok(WindowsLibrary(nonzero))
             }
             Err(_) => Err(NvEncError::SharedLibraryLoadingFailed),
         }
@@ -180,6 +180,6 @@ fn is_system_library_signed(filename: &str) -> bool {
 mod tests {
     #[test]
     fn library_loading() {
-        super::Library::load("nvEncodeAPI64.dll").unwrap();
+        super::WindowsLibrary::load("nvEncodeAPI64.dll").unwrap();
     }
 }

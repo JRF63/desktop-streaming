@@ -6,11 +6,15 @@ mod queries;
 mod shared;
 mod raw;
 
-use self::init::*;
 use crate::{nvenc_function, sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
-use buffer::NvidiaEncoderBufferItems;
-use config::EncoderParams;
-use output::EncoderOutput;
+use self::{
+    init::*, // TODO: Remove this
+    raw::RawEncoder,
+    buffer::NvidiaEncoderBufferItems,
+    config::EncoderParams,
+    output::EncoderOutput,
+};
+
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull, sync::Arc};
 use windows::{
     core::Interface,
@@ -20,7 +24,7 @@ use windows::{
     },
 };
 
-use crate::os::windows::{create_texture_buffer, Library};
+use crate::os::windows::{create_texture_buffer, WindowsLibrary};
 
 pub(crate) struct NvidiaEncoderShared<const BUF_SIZE: usize> {
     raw_encoder: NonNull<c_void>,
@@ -28,7 +32,7 @@ pub(crate) struct NvidiaEncoderShared<const BUF_SIZE: usize> {
     buffer: CyclicBuffer<NvidiaEncoderBufferItems, BUF_SIZE>,
 
     #[allow(dead_code)]
-    library: Library,
+    library: WindowsLibrary,
 }
 
 impl<const BUF_SIZE: usize> Drop for NvidiaEncoderShared<BUF_SIZE> {
@@ -57,7 +61,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
     ) -> anyhow::Result<(Self, EncoderParams)> {
         assert!(BUF_SIZE.count_ones() == 1, "Buffer size must be a power of two");
 
-        let library = Library::load("nvEncodeAPI64.dll")?;
+        let library = WindowsLibrary::load("nvEncodeAPI64.dll")?;
         if !is_version_supported(&library)? {
             return Err(anyhow::anyhow!(
                 "NVENC version is not supported by the installed driver"
