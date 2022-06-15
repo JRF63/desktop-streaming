@@ -10,7 +10,7 @@ use std::io::prelude::*;
 fn main() {
     let display_index = 0;
     let formats = vec![windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM];
-    let buf_size: usize = 8;
+    const BUF_SIZE: usize = 8;
     const NUM_FRAMES: usize = 120;
 
     let codec = Codec::H264;
@@ -22,8 +22,13 @@ fn main() {
         capture::ScreenDuplicator::new(device.clone(), display_index, &formats).unwrap();
     let display_desc = duplicator.desc();
 
-    let (mut encoder_input, encoder_output) =
-        nvenc_windows::create_encoder(device, &display_desc, codec, preset, tuning_info);
+    let (mut encoder, encoder_output) = nvenc_windows::create_encoder::<BUF_SIZE>(
+        device,
+        &display_desc,
+        codec,
+        preset,
+        tuning_info,
+    );
 
     let a = std::thread::spawn(move || {
         let mut i = 0;
@@ -51,7 +56,7 @@ fn main() {
 
     {
         let mut file = File::create("target/dump/csd.bin").unwrap();
-        let csd = encoder_input.get_codec_specific_data().unwrap();
+        let csd = encoder.get_codec_specific_data().unwrap();
         file.write_all(&csd).unwrap();
     }
 
@@ -74,9 +79,11 @@ fn main() {
             }
         };
 
-        encoder_input.encode_frame(resource, info.LastPresentTime as u32).unwrap();
+        encoder
+            .encode_frame(resource, info.LastPresentTime as u32)
+            .unwrap();
     }
 
-    std::mem::drop(encoder_input);
+    std::mem::drop(encoder);
     a.join().unwrap();
 }

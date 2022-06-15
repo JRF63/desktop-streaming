@@ -21,20 +21,16 @@ use windows::{
 
 use crate::os::windows::{create_texture_buffer, Library};
 
-const BUF_SIZE: usize = 8;
-
-pub(crate) struct NvidiaEncoderShared {
+pub(crate) struct NvidiaEncoderShared<const BUF_SIZE: usize> {
     raw_encoder: NonNull<c_void>,
     functions: nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    buffer_texture: ID3D11Texture2D,
-
     buffer: CyclicBuffer<NvidiaEncoderBufferItems, BUF_SIZE>,
 
     #[allow(dead_code)]
     library: Library,
 }
 
-impl Drop for NvidiaEncoderShared {
+impl<const BUF_SIZE: usize> Drop for NvidiaEncoderShared<BUF_SIZE> {
     fn drop(&mut self) {
         for buffer in self.buffer.get_mut() {
             buffer.get_mut().cleanup(&self.functions, self.raw_encoder);
@@ -46,17 +42,20 @@ impl Drop for NvidiaEncoderShared {
 }
 
 // TODO: `Sync` and `Send` are technically wrong
-unsafe impl Sync for NvidiaEncoderShared {}
-unsafe impl Send for NvidiaEncoderShared {}
+unsafe impl<const BUF_SIZE: usize> Sync for NvidiaEncoderShared<BUF_SIZE> {}
+unsafe impl<const BUF_SIZE: usize> Send for NvidiaEncoderShared<BUF_SIZE> {}
 
-impl NvidiaEncoderShared {
+impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
     pub(crate) fn new(
         device: ID3D11Device,
         display_desc: &DXGI_OUTDUPL_DESC,
+        buffer_texture: &ID3D11Texture2D,
         codec: Codec,
         preset: EncoderPreset,
         tuning_info: TuningInfo,
     ) -> anyhow::Result<(Self, EncoderParams)> {
+        assert!(BUF_SIZE.count_ones() == 1, "Buffer size must be a power of two");
+
         let library = Library::load("nvEncodeAPI64.dll")?;
         if !is_version_supported(&library)? {
             return Err(anyhow::anyhow!(
@@ -82,8 +81,6 @@ impl NvidiaEncoderShared {
             );
         }
 
-        let input_textures = create_texture_buffer(&device, display_desc, BUF_SIZE)?;
-
         let buffer = unsafe {
             let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; BUF_SIZE]>::uninit();
 
@@ -94,7 +91,7 @@ impl NvidiaEncoderShared {
                 ptr.write(NvidiaEncoderBufferItems::new(
                     &functions,
                     raw_encoder,
-                    &input_textures,
+                    buffer_texture,
                     i as u32,
                 )?);
                 ptr = ptr.offset(1);
@@ -106,7 +103,6 @@ impl NvidiaEncoderShared {
             NvidiaEncoderShared {
                 raw_encoder,
                 functions,
-                buffer_texture: input_textures,
                 buffer: CyclicBuffer::new(buffer),
                 library,
             },
@@ -115,19 +111,21 @@ impl NvidiaEncoderShared {
     }
 }
 
-pub struct NvidiaEncoder {
-    shared: Arc<NvidiaEncoderShared>,
+pub struct NvidiaEncoder<const BUF_SIZE: usize> {
+    shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
     device_context: ID3D11DeviceContext,
+    buffer_texture: ID3D11Texture2D,
     pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
     encoder_params: EncoderParams,
 }
 
-unsafe impl Send for NvidiaEncoder {}
+unsafe impl<const BUF_SIZE: usize> Send for NvidiaEncoder<BUF_SIZE> {}
 
-impl NvidiaEncoder {
+impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     pub(crate) fn new(
-        shared: Arc<NvidiaEncoderShared>,
+        shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
         device_context: ID3D11DeviceContext,
+        buffer_texture: ID3D11Texture2D,
         encoder_params: EncoderParams,
     ) -> Self {
         let pic_params = {
@@ -145,6 +143,7 @@ impl NvidiaEncoder {
         NvidiaEncoder {
             shared,
             device_context,
+            buffer_texture,
             pic_params,
             encoder_params,
         }
@@ -201,14 +200,14 @@ impl NvidiaEncoder {
     pub fn encode_frame(&mut self, frame: IDXGIResource, timestamp: u32) -> Result<()> {
         let pic_params = &mut self.pic_params;
         let device_context = &self.device_context;
-        let input_textures = &self.shared.buffer_texture;
+        let input_textures = &self.buffer_texture;
         let functions = &self.shared.functions;
         let raw_encoder = self.shared.raw_encoder;
 
         self.shared.buffer.writer_access(|index, buffer| {
-            NvidiaEncoder::copy_input_frame(device_context, input_textures, &frame, index);
+            NvidiaEncoder::<BUF_SIZE>::copy_input_frame(device_context, input_textures, &frame, index);
 
-            buffer.mapped_input = NvidiaEncoder::map_input(
+            buffer.mapped_input = NvidiaEncoder::<BUF_SIZE>::map_input(
                 functions,
                 raw_encoder,
                 buffer.registered_resource.as_ptr(),
@@ -282,24 +281,37 @@ impl NvidiaEncoder {
     }
 }
 
-pub fn create_encoder(
+pub fn create_encoder<const BUF_SIZE: usize>(
     device: ID3D11Device,
     display_desc: &DXGI_OUTDUPL_DESC,
     codec: Codec,
     preset: EncoderPreset,
     tuning_info: TuningInfo,
-) -> (NvidiaEncoder, EncoderOutput) {
+) -> (NvidiaEncoder<BUF_SIZE>, EncoderOutput<BUF_SIZE>) {
     let mut device_context = None;
     unsafe {
         device.GetImmediateContext(&mut device_context);
     }
 
-    let (encoder, encoder_params) =
-        NvidiaEncoderShared::new(device, display_desc, codec, preset, tuning_info).unwrap();
+    let buffer_texture = create_texture_buffer(&device, display_desc, BUF_SIZE).unwrap();
+
+    let (encoder, encoder_params) = NvidiaEncoderShared::new(
+        device,
+        display_desc,
+        &buffer_texture,
+        codec,
+        preset,
+        tuning_info,
+    )
+    .unwrap();
     let encoder = Arc::new(encoder);
 
-    let encoder_input =
-        NvidiaEncoder::new(encoder.clone(), device_context.unwrap(), encoder_params);
+    let encoder_input = NvidiaEncoder::new(
+        encoder.clone(),
+        device_context.unwrap(),
+        buffer_texture,
+        encoder_params,
+    );
 
     let encoder_output = EncoderOutput::new(encoder);
 

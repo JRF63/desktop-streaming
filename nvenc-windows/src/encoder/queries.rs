@@ -1,11 +1,11 @@
-use super::{NvidiaEncoderShared, Result};
+use super::{NvidiaEncoder, Result};
 use crate::{
     Codec, CodecProfile,
     nvenc_function,
 };
 use std::mem::MaybeUninit;
 
-impl NvidiaEncoderShared {
+impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     pub fn codec_profiles(&self, codec: Codec) -> Result<Vec<CodecProfile>> {
         let encode_guid = codec.into();
         let profile_guids = self.encode_profile_guids(encode_guid)?;
@@ -23,8 +23,8 @@ impl NvidiaEncoderShared {
         let mut encode_guid_count = MaybeUninit::uninit();
         unsafe {
             nvenc_function!(
-                self.functions.nvEncGetEncodeGUIDCount,
-                self.raw_encoder.as_ptr(),
+                self.shared.functions.nvEncGetEncodeGUIDCount,
+                self.shared.raw_encoder.as_ptr(),
                 encode_guid_count.as_mut_ptr()
             );
             Ok(encode_guid_count.assume_init())
@@ -35,8 +35,8 @@ impl NvidiaEncoderShared {
         let mut encode_profile_guid_count = MaybeUninit::uninit();
         unsafe {
             nvenc_function!(
-                self.functions.nvEncGetEncodeProfileGUIDCount,
-                self.raw_encoder.as_ptr(),
+                self.shared.functions.nvEncGetEncodeProfileGUIDCount,
+                self.shared.raw_encoder.as_ptr(),
                 encode_guid,
                 encode_profile_guid_count.as_mut_ptr()
             );
@@ -50,8 +50,8 @@ impl NvidiaEncoderShared {
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
             nvenc_function!(
-                self.functions.nvEncGetEncodeProfileGUIDs,
-                self.raw_encoder.as_ptr(),
+                self.shared.functions.nvEncGetEncodeProfileGUIDs,
+                self.shared.raw_encoder.as_ptr(),
                 encode_guid,
                 profile_guids.as_mut_ptr(),
                 encode_profile_guid_count,
@@ -68,8 +68,8 @@ impl NvidiaEncoderShared {
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
             nvenc_function!(
-                self.functions.nvEncGetEncodeGUIDs,
-                self.raw_encoder.as_ptr(),
+                self.shared.functions.nvEncGetEncodeGUIDs,
+                self.shared.raw_encoder.as_ptr(),
                 encode_guids.as_mut_ptr(),
                 encode_guid_count,
                 num_entries.as_mut_ptr()
