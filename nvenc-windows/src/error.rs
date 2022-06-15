@@ -57,7 +57,7 @@ pub enum NvEncError {
     #[error("Client is attempting to unmap a resource that has not been successfully mapped.")]
     ResourceNotMapped = 25,
 
-    // This libs errors
+    // This library's errors
     #[error("The shared library for `nvEncodeAPI64` is not signed and may have been tampered.")]
     LibraryNotSigned = 0x7fffffff,
     #[error("Loading the shared library for `nvEncodeAPI64` failed.")]
@@ -66,6 +66,9 @@ pub enum NvEncError {
     GetMaxSupportedVersionLoadingFailed = 0x7fffffff - 2,
     #[error("Unable to locate `NvEncodeAPICreateInstance` in the shared library.")]
     CreateInstanceLoadingFailed = 0x7fffffff - 3,
+
+    #[error("Could not create a Windows event object")]
+    AsyncEventCreationFailed= 0x7fffffff - 20,
     
     #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
     MalformedFunctionList = 0x7fffffff - 111,

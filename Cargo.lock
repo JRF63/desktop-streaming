@@ -261,7 +261,6 @@ name = "nvenc-windows"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "crossbeam-channel",
  "nvenc-sys",
  "thiserror",
  "windows",

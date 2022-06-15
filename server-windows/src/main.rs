@@ -26,8 +26,6 @@ fn main() {
         nvenc_windows::create_encoder(device, &display_desc, codec, preset, tuning_info);
 
     let a = std::thread::spawn(move || {
-        
-
         let mut i = 0;
 
         while let Ok(_) = encoder_output.wait_for_output(|lock| {
@@ -36,23 +34,23 @@ fn main() {
                 lock.outputTimeStamp, lock.bitstreamSizeInBytes
             );
 
-            // let mut file = File::create(format!("{}.h264", i)).unwrap();
-            // i += 1;
+            let mut file = File::create(format!("target/dump/{}.h264", i)).unwrap();
+            i += 1;
 
-            // let slice = unsafe {
-            //     std::slice::from_raw_parts(
-            //         lock.bitstreamBufferPtr as *const u8,
-            //         lock.bitstreamSizeInBytes as usize,
-            //     )
-            // };
+            let slice = unsafe {
+                std::slice::from_raw_parts(
+                    lock.bitstreamBufferPtr as *const u8,
+                    lock.bitstreamSizeInBytes as usize,
+                )
+            };
 
-            // file.write_all(slice).unwrap();
+            file.write_all(slice).unwrap();
         }) {}
         println!("Exiting");
     });
 
     {
-        let mut file = File::create("csd.bin").unwrap();
+        let mut file = File::create("target/dump/csd.bin").unwrap();
         let csd = encoder_input.get_codec_specific_data().unwrap();
         file.write_all(&csd).unwrap();
     }

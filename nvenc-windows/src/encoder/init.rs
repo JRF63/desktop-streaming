@@ -1,10 +1,8 @@
-use crate::{
-    error::NvEncError, nvenc_function, util::IntoNvEncBufferFormat, util::NvEncDevice, Result,
-};
+use crate::{error::NvEncError, nvenc_function, util::NvEncDevice, Result};
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
-use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
-use crate::os::windows::{EventObject, Library};
+// TODO: Make this a generic parameter
+use crate::os::windows::Library;
 
 /// Checks if the user's NvEncAPI version is supported.
 pub(crate) fn is_version_supported(lib: &Library) -> Result<bool> {
@@ -134,100 +132,4 @@ pub(crate) fn open_encode_session<T: NvEncDevice>(
         Some(ptr) => Ok(ptr),
         None => Err(NvEncError::OpenEncodeSessionFailed),
     }
-}
-
-pub(crate) fn register_async_event(
-    functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
-    event: &EventObject,
-) -> Result<()> {
-    unsafe {
-        let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
-        event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
-        event_params.completionEvent = event.as_ptr();
-        nvenc_function!(
-            functions.nvEncRegisterAsyncEvent,
-            raw_encoder.as_ptr(),
-            &mut event_params
-        );
-    }
-    Ok(())
-}
-
-pub(crate) fn unregister_async_event(
-    functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
-    event: &EventObject,
-) -> Result<()> {
-    unsafe {
-        let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
-        event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
-        event_params.completionEvent = event.as_ptr();
-        nvenc_function!(
-            functions.nvEncUnregisterAsyncEvent,
-            raw_encoder.as_ptr(),
-            &mut event_params
-        );
-    }
-    Ok(())
-}
-
-/// Registers the passed texture for NVENC API bookkeeping.
-pub(crate) fn register_resource(
-    functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
-    texture: ID3D11Texture2D,
-    subresource_index: u32,
-) -> Result<NonNull<c_void>> {
-    let texture_desc = unsafe {
-        let mut tmp = MaybeUninit::uninit();
-        texture.GetDesc(tmp.as_mut_ptr());
-        tmp.assume_init()
-    };
-
-    let mut register_resource_params = nvenc_sys::NV_ENC_REGISTER_RESOURCE {
-        version: nvenc_sys::NV_ENC_REGISTER_RESOURCE_VER,
-        resourceType: nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX,
-        width: texture_desc.Width,
-        height: texture_desc.Height,
-        pitch: 0,
-        subResourceIndex: subresource_index,
-        resourceToRegister: unsafe { std::mem::transmute(texture) }, // cast to *mut c_void,
-        registeredResource: std::ptr::null_mut(),
-        bufferFormat: texture_desc.Format.into_nvenc_buffer_format(),
-        bufferUsage: nvenc_sys::NV_ENC_BUFFER_USAGE::NV_ENC_INPUT_IMAGE,
-        pInputFencePoint: std::ptr::null_mut(),
-        pOutputFencePoint: std::ptr::null_mut(),
-        reserved1: [0; 247],
-        reserved2: [std::ptr::null_mut(); 60],
-    };
-
-    unsafe {
-        nvenc_function!(
-            functions.nvEncRegisterResource,
-            raw_encoder.as_ptr(),
-            &mut register_resource_params
-        );
-    }
-
-    Ok(NonNull::new(register_resource_params.registeredResource).unwrap())
-}
-
-/// Allocate an output buffer. Should be called only after the encoder has been configured.
-pub(crate) fn create_output_buffers(
-    functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
-) -> Result<NonNull<c_void>> {
-    let mut create_bitstream_buffer_params: nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER =
-        unsafe { MaybeUninit::zeroed().assume_init() };
-    create_bitstream_buffer_params.version = nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
-
-    unsafe {
-        nvenc_function!(
-            functions.nvEncCreateBitstreamBuffer,
-            raw_encoder.as_ptr(),
-            &mut create_bitstream_buffer_params
-        );
-    }
-    Ok(NonNull::new(create_bitstream_buffer_params.bitstreamBuffer).unwrap())
 }

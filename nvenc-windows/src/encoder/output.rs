@@ -1,19 +1,18 @@
-use super::NvidiaEncoder;
+use super::NvidiaEncoderShared;
 use crate::nvenc_function;
 use anyhow::Context;
-use crossbeam_channel::{Receiver, Sender};
 use std::{mem::MaybeUninit, sync::Arc};
 
 pub struct EncoderOutput {
-    encoder: Arc<NvidiaEncoder>,
+    shared: Arc<NvidiaEncoderShared>,
 }
 
 impl EncoderOutput {
     pub(crate) fn new(
-        encoder: Arc<NvidiaEncoder>,
+        shared: Arc<NvidiaEncoderShared>,
     ) -> Self {
         EncoderOutput {
-            encoder,
+            shared,
         }
     }
 
@@ -23,18 +22,18 @@ impl EncoderOutput {
     ) -> anyhow::Result<()> {
         const ERR_LABEL: &'static str = "EncoderOutput error";
 
-        self.encoder.buffer.reader_access(|buffer| -> anyhow::Result<()> {
+        self.shared.buffer.reader_access(|buffer| -> anyhow::Result<()> {
             buffer.event_obj.blocking_wait().context(ERR_LABEL)?;
 
             let mut lock_params: nvenc_sys::NV_ENC_LOCK_BITSTREAM =
                 unsafe { MaybeUninit::zeroed().assume_init() };
             lock_params.version = nvenc_sys::NV_ENC_LOCK_BITSTREAM_VER;
-            lock_params.outputBitstream = buffer.output_ptr.as_ptr();
+            lock_params.outputBitstream = buffer.output_buffer.as_ptr();
 
             unsafe {
                 nvenc_function!(
-                    self.encoder.functions.nvEncLockBitstream,
-                    self.encoder.raw_encoder.as_ptr(),
+                    self.shared.functions.nvEncLockBitstream,
+                    self.shared.raw_encoder.as_ptr(),
                     &mut lock_params
                 );
             }
@@ -43,15 +42,15 @@ impl EncoderOutput {
 
             unsafe {
                 nvenc_function!(
-                    self.encoder.functions.nvEncUnlockBitstream,
-                    self.encoder.raw_encoder.as_ptr(),
+                    self.shared.functions.nvEncUnlockBitstream,
+                    self.shared.raw_encoder.as_ptr(),
                     lock_params.outputBitstream
                 );
 
                 nvenc_function!(
-                    self.encoder.functions.nvEncUnmapInputResource,
-                    self.encoder.raw_encoder.as_ptr(),
-                    buffer.input_ptr
+                    self.shared.functions.nvEncUnmapInputResource,
+                    self.shared.raw_encoder.as_ptr(),
+                    buffer.mapped_input
                 );
             }
             Ok(())

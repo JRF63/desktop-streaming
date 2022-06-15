@@ -10,6 +10,15 @@ pub(crate) trait NvEncDevice {
     fn as_ptr(&self) -> *mut c_void;
 }
 
+pub(crate) trait NvEncTexture {
+    fn resource_type() -> nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE;
+
+    /// Returns (width, height, texture_format)
+    fn desc(&self) -> (u32, u32, Box<dyn crate::util::IntoNvEncBufferFormat>);
+
+    fn as_ptr(&self) -> *mut c_void;
+}
+
 // https://en.wikipedia.org/wiki/Binary_GCD_algorithm
 pub(crate) fn gcd(mut u: u32, mut v: u32) -> u32 {
     use std::cmp::min;

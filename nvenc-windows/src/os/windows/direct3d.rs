@@ -1,3 +1,4 @@
+use std::mem::MaybeUninit;
 use windows::Win32::Graphics::{
     Direct3D11::{
         ID3D11Device, ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_CPU_ACCESS_FLAG,
@@ -13,6 +14,29 @@ impl crate::util::NvEncDevice for ID3D11Device {
 
     fn as_ptr(&self) -> *mut std::os::raw::c_void {
         unsafe { std::mem::transmute(self.clone()) }
+    }
+}
+
+impl crate::util::NvEncTexture for ID3D11Texture2D {
+    fn resource_type() -> nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE {
+        nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX
+    }
+
+    fn as_ptr(&self) -> *mut std::os::raw::c_void {
+        unsafe { std::mem::transmute(self.clone()) }
+    }
+
+    fn desc(&self) -> (u32, u32, Box<dyn crate::util::IntoNvEncBufferFormat>) {
+        let texture_desc = unsafe {
+            let mut tmp = MaybeUninit::uninit();
+            self.GetDesc(tmp.as_mut_ptr());
+            tmp.assume_init()
+        };
+        (
+            texture_desc.Width,
+            texture_desc.Height,
+            Box::new(texture_desc.Format),
+        )
     }
 }
 
@@ -44,7 +68,5 @@ pub(crate) fn create_texture_buffer(
         MiscFlags: D3D11_RESOURCE_MISC_FLAG(0),
     };
 
-    unsafe {
-        device.CreateTexture2D(&texture_desc, std::ptr::null())
-    }
+    unsafe { device.CreateTexture2D(&texture_desc, std::ptr::null()) }
 }

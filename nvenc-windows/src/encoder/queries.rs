@@ -1,11 +1,11 @@
-use super::{NvidiaEncoder, Result};
+use super::{NvidiaEncoderShared, Result};
 use crate::{
     Codec, CodecProfile,
     nvenc_function,
 };
 use std::mem::MaybeUninit;
 
-impl NvidiaEncoder {
+impl NvidiaEncoderShared {
     pub fn codec_profiles(&self, codec: Codec) -> Result<Vec<CodecProfile>> {
         let encode_guid = codec.into();
         let profile_guids = self.encode_profile_guids(encode_guid)?;
