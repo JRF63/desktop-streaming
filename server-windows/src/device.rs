@@ -1,10 +1,10 @@
 use windows::{
-    core::Result,
+    core::{Result, Interface},
     Win32::Graphics::{
         Direct3D::{self, D3D_DRIVER_TYPE_HARDWARE},
         Direct3D11::{
             D3D11CreateDevice, ID3D11Device, D3D11_CREATE_DEVICE_DEBUG, D3D11_SDK_VERSION,
-            D3D11_CREATE_DEVICE_FLAG
+            D3D11_CREATE_DEVICE_FLAG, ID3D11Multithread
         },
     },
 };
@@ -23,7 +23,6 @@ pub fn create_d3d11_device() -> Result<ID3D11Device> {
 
     let mut flags = D3D11_CREATE_DEVICE_FLAG(0);
     
-    // TODO: D3D11_CREATE_DEVICE_SINGLETHREADED for release?
     #[cfg(debug_assertions)]
     {
         flags |= D3D11_CREATE_DEVICE_DEBUG;
@@ -45,7 +44,18 @@ pub fn create_d3d11_device() -> Result<ID3D11Device> {
         )?;
     }
 
-    Ok(device.unwrap())
+    let device = device.unwrap();
+    let device_context = unsafe {
+        let mut tmp = None;
+        device.GetImmediateContext(&mut tmp);
+        tmp.unwrap()
+    };
+    let multithreaded: ID3D11Multithread = device_context.cast().unwrap();
+    unsafe {
+        multithreaded.SetMultithreadProtected(true);
+    }
+
+    Ok(device)
 }
 
 #[test]

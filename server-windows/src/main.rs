@@ -61,7 +61,6 @@ fn main() {
     }
 
     for _i in 0..NUM_FRAMES {
-        let _ = duplicator.release_frame();
         let (resource, info) = loop {
             match duplicator.acquire_frame() {
                 Ok(r) => break r,
@@ -82,6 +81,7 @@ fn main() {
         encoder
             .encode_frame(resource, info.LastPresentTime as u32)
             .unwrap();
+        duplicator.release_frame().unwrap();
     }
 
     std::mem::drop(encoder);

@@ -86,8 +86,7 @@ impl EncoderParams {
             unsafe { MaybeUninit::zeroed().assume_init() };
         tmp.version = nvenc_sys::NV_ENC_RECONFIGURE_PARAMS_VER;
         tmp.reInitEncodeParams = init_params;
-        // println!("NV_ENC_INITIALIZE_PARAMS ----");
-        // println!("{:?}", &tmp.reInitEncodeParams);
+        
         Ok(EncoderParams(tmp))
     }
 
@@ -115,17 +114,7 @@ impl EncoderParams {
             );
             tmp.assume_init()
         };
-        // println!("NV_ENC_CONFIG ----");
-        // println!("profileGUID: {:?}", &preset_config_params.presetCfg.profileGUID);
-        // println!("gopLength: {:?}", &preset_config_params.presetCfg.gopLength);
-        // println!("frameIntervalP: {:?}", &preset_config_params.presetCfg.frameIntervalP);
-        // println!("monoChromeEncoding: {:?}", &preset_config_params.presetCfg.monoChromeEncoding);
-        // println!("frameFieldMode: {:?}", &preset_config_params.presetCfg.frameFieldMode);
-        // println!("mvPrecision: {:?}", &preset_config_params.presetCfg.mvPrecision);
-        // println!("NV_ENC_RC_PARAMS ----");
-        // println!("mvPrecision: {:?}", &preset_config_params.presetCfg.rcParams);
-        // println!("NV_ENC_CONFIG_H264 ----");
-        // println!("{:?}", unsafe { &preset_config_params.presetCfg.encodeCodecConfig.h264Config });
+        
         Ok(Box::new(preset_config_params.presetCfg))
     }
 

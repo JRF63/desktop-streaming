@@ -143,6 +143,21 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
             tmp
         };
 
+        // println!("NV_ENC_INITIALIZE_PARAMS ----");
+        // println!("{:?}", &tmp.reInitEncodeParams);
+        // println!("NV_ENC_CONFIG ----");
+        // let c = encoder_params.encode_config_mut();
+        // println!("profileGUID: {:?}", &c.profileGUID);
+        // println!("gopLength: {:?}", &c.gopLength);
+        // println!("frameIntervalP: {:?}", &c.frameIntervalP);
+        // println!("monoChromeEncoding: {:?}", &c.monoChromeEncoding);
+        // println!("frameFieldMode: {:?}", &c.frameFieldMode);
+        // println!("mvPrecision: {:?}", &c.mvPrecision);
+        // println!("NV_ENC_RC_PARAMS ----");
+        // println!("mvPrecision: {:?}", &c.rcParams);
+        // println!("NV_ENC_CONFIG_H264 ----");
+        // println!("{:?}", unsafe { &c.encodeCodecConfig.h264Config });
+
         NvidiaEncoder {
             shared,
             device_context,
@@ -209,6 +224,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
 
         self.shared.buffer.writer_access(|index, buffer| {
             NvidiaEncoder::<BUF_SIZE>::copy_input_frame(device_context, input_textures, &frame, index);
+            // TODO: Call ReleaseFrame after copying and drop the IDXGIResource
 
             buffer.mapped_input = NvidiaEncoder::<BUF_SIZE>::map_input(
                 functions,
