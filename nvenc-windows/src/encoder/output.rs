@@ -1,5 +1,4 @@
 use super::NvidiaEncoderShared;
-use crate::nvenc_function;
 use anyhow::Context;
 use std::{mem::MaybeUninit, sync::Arc};
 
@@ -29,28 +28,20 @@ impl<const BUF_SIZE: usize> EncoderOutput<BUF_SIZE> {
                 lock_params.outputBitstream = buffer.output_buffer.as_ptr();
 
                 unsafe {
-                    nvenc_function!(
-                        self.shared.functions.nvEncLockBitstream,
-                        self.shared.raw_encoder.as_ptr(),
-                        &mut lock_params
-                    );
+                    self.shared.raw_encoder.lock_bitstream(&mut lock_params)?;
                 }
 
                 consume_output(&lock_params);
 
                 unsafe {
-                    nvenc_function!(
-                        self.shared.functions.nvEncUnlockBitstream,
-                        self.shared.raw_encoder.as_ptr(),
-                        lock_params.outputBitstream
-                    );
-
-                    nvenc_function!(
-                        self.shared.functions.nvEncUnmapInputResource,
-                        self.shared.raw_encoder.as_ptr(),
-                        buffer.mapped_input
-                    );
+                    self.shared
+                        .raw_encoder
+                        .unlock_bitstream(lock_params.outputBitstream)?;
+                    self.shared
+                        .raw_encoder
+                        .unmap_input_resource(buffer.mapped_input)?;
                 }
+
                 Ok(())
             })
     }

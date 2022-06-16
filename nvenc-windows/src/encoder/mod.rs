@@ -1,6 +1,5 @@
 mod buffer;
 mod config;
-mod init;
 mod library;
 mod output;
 mod queries;
@@ -8,15 +7,11 @@ mod raw;
 mod shared;
 
 use self::{
-    buffer::NvidiaEncoderBufferItems,
-    config::EncoderParams,
-    init::*, // TODO: Remove this
-    output::EncoderOutput,
-    raw::RawEncoder,
+    buffer::NvidiaEncoderBufferItems, config::EncoderParams, output::EncoderOutput, raw::RawEncoder,
 };
-use crate::{nvenc_function, sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
+use crate::{sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
 
-use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull, sync::Arc};
+use std::{mem::MaybeUninit, sync::Arc};
 use windows::{
     core::Interface,
     Win32::Graphics::{
@@ -25,24 +20,17 @@ use windows::{
     },
 };
 
-use crate::os::windows::{create_texture_buffer, WindowsLibrary};
+use crate::os::windows::{create_texture_buffer};
 
 pub(crate) struct NvidiaEncoderShared<const BUF_SIZE: usize> {
-    raw_encoder: NonNull<c_void>,
-    functions: nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
+    raw_encoder: RawEncoder,
     buffer: CyclicBuffer<NvidiaEncoderBufferItems, BUF_SIZE>,
-
-    #[allow(dead_code)]
-    library: WindowsLibrary,
 }
 
 impl<const BUF_SIZE: usize> Drop for NvidiaEncoderShared<BUF_SIZE> {
     fn drop(&mut self) {
         for buffer in self.buffer.get_mut() {
-            buffer.get_mut().cleanup(&self.functions, self.raw_encoder);
-        }
-        unsafe {
-            (self.functions.nvEncDestroyEncoder.unwrap())(self.raw_encoder.as_ptr());
+            buffer.get_mut().cleanup(&self.raw_encoder);
         }
     }
 }
@@ -65,29 +53,13 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
             "Buffer size must be a power of two"
         );
 
-        let library = WindowsLibrary::load2("nvEncodeAPI64.dll")?;
-        if !is_version_supported(&library)? {
-            return Err(anyhow::anyhow!(
-                "NVENC version is not supported by the installed driver"
-            ));
-        }
-        let functions = get_function_list(&library)?;
-        let raw_encoder = open_encode_session(&functions, &device)?;
+        let raw_encoder = RawEncoder::new(&device)?;
 
-        let mut encoder_params = EncoderParams::new(
-            &functions,
-            raw_encoder,
-            display_desc,
-            codec,
-            preset,
-            tuning_info,
-        )?;
+        let mut encoder_params =
+            EncoderParams::new(&raw_encoder, display_desc, codec, preset, tuning_info)?;
+
         unsafe {
-            nvenc_function!(
-                functions.nvEncInitializeEncoder,
-                raw_encoder.as_ptr(),
-                encoder_params.init_params_mut()
-            );
+            raw_encoder.initialize_encoder(encoder_params.init_params_mut())?;
         }
 
         let buffer = unsafe {
@@ -98,8 +70,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
 
             for i in 0..BUF_SIZE {
                 ptr.write(NvidiaEncoderBufferItems::new(
-                    &functions,
-                    raw_encoder,
+                    &raw_encoder,
                     buffer_texture,
                     i as u32,
                 )?);
@@ -111,9 +82,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
         Ok((
             NvidiaEncoderShared {
                 raw_encoder,
-                functions,
                 buffer: CyclicBuffer::new(buffer),
-                library,
             },
             encoder_params,
         ))
@@ -124,7 +93,7 @@ pub struct NvidiaEncoder<const BUF_SIZE: usize> {
     shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
     device_context: ID3D11DeviceContext,
     buffer_texture: ID3D11Texture2D,
-    pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
+    encode_pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
     encoder_params: EncoderParams,
 }
 
@@ -172,7 +141,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
             shared,
             device_context,
             buffer_texture,
-            pic_params,
+            encode_pic_params: pic_params,
             encoder_params,
         }
     }
@@ -196,11 +165,9 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
 
     pub(crate) fn reconfigure_params(&mut self) -> Result<()> {
         unsafe {
-            nvenc_function!(
-                self.shared.functions.nvEncReconfigureEncoder,
-                self.shared.raw_encoder.as_ptr(),
-                self.encoder_params.reconfig_params_mut()
-            );
+            self.shared
+                .raw_encoder
+                .reconfigure_encoder(self.encoder_params.reconfig_params_mut())?;
         }
 
         Ok(())
@@ -219,18 +186,16 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         unsafe {
             let mut buffer = vec![0; 1024];
             let mut bytes_written = 0;
-            let mut params: nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD =
+            let mut sequence_param_payload: nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD =
                 MaybeUninit::zeroed().assume_init();
-            params.version = nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;
-            params.inBufferSize = buffer.len() as u32;
-            params.spsppsBuffer = buffer.as_mut_ptr().cast();
-            params.outSPSPPSPayloadSize = &mut bytes_written;
+            sequence_param_payload.version = nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;
+            sequence_param_payload.inBufferSize = buffer.len() as u32;
+            sequence_param_payload.spsppsBuffer = buffer.as_mut_ptr().cast();
+            sequence_param_payload.outSPSPPSPayloadSize = &mut bytes_written;
 
-            nvenc_function!(
-                self.shared.functions.nvEncGetSequenceParams,
-                self.shared.raw_encoder.as_ptr(),
-                &mut params
-            );
+            self.shared
+                .raw_encoder
+                .get_sequence_params(&mut sequence_param_payload)?;
 
             buffer.truncate(bytes_written as usize);
             Ok(buffer)
@@ -238,11 +203,10 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     }
 
     pub fn encode_frame(&mut self, frame: IDXGIResource, timestamp: u64) -> Result<()> {
-        let pic_params = &mut self.pic_params;
+        let pic_params = &mut self.encode_pic_params;
         let device_context = &self.device_context;
         let input_textures = &self.buffer_texture;
-        let functions = &self.shared.functions;
-        let raw_encoder = self.shared.raw_encoder;
+        let raw_encoder = &self.shared.raw_encoder;
 
         self.shared.buffer.writer_access(|index, buffer| {
             NvidiaEncoder::<BUF_SIZE>::copy_input_frame(
@@ -254,7 +218,6 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
             // TODO: Call ReleaseFrame after copying and drop the IDXGIResource
 
             buffer.mapped_input = NvidiaEncoder::<BUF_SIZE>::map_input(
-                functions,
                 raw_encoder,
                 buffer.registered_resource.as_ptr(),
             )
@@ -267,14 +230,12 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         std::mem::drop(frame);
 
         // Used for invalidation of frames
-        self.pic_params.inputTimeStamp = timestamp;
+        self.encode_pic_params.inputTimeStamp = timestamp;
 
         unsafe {
-            nvenc_function!(
-                self.shared.functions.nvEncEncodePicture,
-                self.shared.raw_encoder.as_ptr(),
-                &mut self.pic_params
-            );
+            self.shared
+                .raw_encoder
+                .encode_picture(&mut self.encode_pic_params)?;
         }
 
         Ok(())
@@ -307,8 +268,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     /// `nvEncEncodePicture` if async encode is enabled.
     #[inline]
     fn map_input(
-        functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-        raw_encoder: NonNull<c_void>,
+        raw_encoder: &RawEncoder,
         registered_resource: nvenc_sys::NV_ENC_REGISTERED_PTR,
     ) -> Result<nvenc_sys::NV_ENC_INPUT_PTR> {
         let mut map_input_resource_params: nvenc_sys::NV_ENC_MAP_INPUT_RESOURCE =
@@ -317,11 +277,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         map_input_resource_params.registeredResource = registered_resource;
 
         unsafe {
-            nvenc_function!(
-                functions.nvEncMapInputResource,
-                raw_encoder.as_ptr(),
-                &mut map_input_resource_params
-            );
+            raw_encoder.map_input_resource(&mut map_input_resource_params)?;
         }
         Ok(map_input_resource_params.mappedResource)
     }

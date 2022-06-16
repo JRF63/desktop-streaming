@@ -1,8 +1,5 @@
 use super::{NvidiaEncoder, Result};
-use crate::{
-    Codec, CodecProfile,
-    nvenc_function,
-};
+use crate::{Codec, CodecProfile};
 use std::mem::MaybeUninit;
 
 impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
@@ -22,11 +19,9 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     fn encode_guid_count(&self) -> Result<u32> {
         let mut encode_guid_count = MaybeUninit::uninit();
         unsafe {
-            nvenc_function!(
-                self.shared.functions.nvEncGetEncodeGUIDCount,
-                self.shared.raw_encoder.as_ptr(),
-                encode_guid_count.as_mut_ptr()
-            );
+            self.shared
+                .raw_encoder
+                .get_encode_guid_count(encode_guid_count.as_mut_ptr())?;
             Ok(encode_guid_count.assume_init())
         }
     }
@@ -34,12 +29,10 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     fn encode_profile_guid_count(&self, encode_guid: nvenc_sys::GUID) -> Result<u32> {
         let mut encode_profile_guid_count = MaybeUninit::uninit();
         unsafe {
-            nvenc_function!(
-                self.shared.functions.nvEncGetEncodeProfileGUIDCount,
-                self.shared.raw_encoder.as_ptr(),
+            self.shared.raw_encoder.get_encode_profile_guid_count(
                 encode_guid,
-                encode_profile_guid_count.as_mut_ptr()
-            );
+                encode_profile_guid_count.as_mut_ptr(),
+            )?;
             Ok(encode_profile_guid_count.assume_init())
         }
     }
@@ -49,14 +42,12 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         let mut profile_guids = Vec::with_capacity(encode_profile_guid_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            nvenc_function!(
-                self.shared.functions.nvEncGetEncodeProfileGUIDs,
-                self.shared.raw_encoder.as_ptr(),
+            self.shared.raw_encoder.get_encode_profile_guids(
                 encode_guid,
                 profile_guids.as_mut_ptr(),
                 encode_profile_guid_count,
-                num_entries.as_mut_ptr()
-            );
+                num_entries.as_mut_ptr(),
+            )?;
             profile_guids.set_len(num_entries.assume_init() as usize);
         }
         Ok(profile_guids)
@@ -67,13 +58,11 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         let mut encode_guids = Vec::with_capacity(encode_guid_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            nvenc_function!(
-                self.shared.functions.nvEncGetEncodeGUIDs,
-                self.shared.raw_encoder.as_ptr(),
+            self.shared.raw_encoder.get_encode_guids(
                 encode_guids.as_mut_ptr(),
                 encode_guid_count,
-                num_entries.as_mut_ptr()
-            );
+                num_entries.as_mut_ptr(),
+            )?;
             encode_guids.set_len(num_entries.assume_init() as usize);
         }
         Ok(encode_guids)

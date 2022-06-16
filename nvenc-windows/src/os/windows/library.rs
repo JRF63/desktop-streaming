@@ -36,28 +36,6 @@ impl Drop for WindowsLibrary {
 }
 
 impl WindowsLibrary {
-    /// Open a .dll.
-    pub(crate) fn load2(lib_name: &str) -> crate::Result<Self> {
-        if !WindowsLibrary::is_library_signed(lib_name) {
-            return Err(crate::NvEncError::LibraryNotSigned);
-        }
-        let lib_name = CString::new(lib_name).unwrap();
-        match unsafe {
-            LoadLibraryExA(
-                PCSTR(lib_name.as_ptr() as *const u8),
-                None,
-                LOAD_LIBRARY_SEARCH_SYSTEM32,
-            )
-        } {
-            Ok(lib) => {
-                // SAFETY: `LoadLibraryExA` returns a non-null pointer on success
-                let nonzero = unsafe { NonZeroIsize::new_unchecked(lib.0) };
-                Ok(WindowsLibrary(nonzero))
-            }
-            Err(_) => Err(crate::NvEncError::LibraryLoadingFailed),
-        }
-    }
-
     /// Open a .dll from C:\Windows\System32 without verification if it's signed
     pub(crate) fn load(lib_name: &str) -> windows::core::Result<Self> {
         let lib_name = CString::new(lib_name).unwrap();
@@ -196,6 +174,7 @@ fn get_system32_dir() -> String {
 mod tests {
     #[test]
     fn library_loading() {
-        super::WindowsLibrary::load2("nvEncodeAPI64.dll").unwrap();
+        assert!(super::WindowsLibrary::is_library_signed("nvEncodeAPI64.dll") == true);
+        super::WindowsLibrary::load("nvEncodeAPI64.dll").unwrap();
     }
 }

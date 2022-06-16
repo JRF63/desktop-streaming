@@ -18,6 +18,10 @@ def build_mapping():
     d = {}
     for m in pattern.finditer(table):
         d[m.group(2)] = m.group(1)
+    
+    # these have the wrong types
+    d['PNVENCGETENCODEPROFILEGUIDCOUNT'] = 'nvEncGetEncodeProfileGUIDCount'
+    d['PNVENCGETENCODEPROFILEGUIDS'] = 'nvEncGetEncodeProfileGUIDs'
     return d
 
 def rustify_name(name):
@@ -42,14 +46,11 @@ for m in pattern.finditer(sigs):
     params = [x.strip() for x in m.group(2).strip().split('\n')]
 
     ptr_type = m.group(1)
-    if ptr_type == 'PNVENCGETENCODEPROFILEGUIDCOUNT':
-        ptr_type = 'PNVENCGETENCODEPRESETCOUNT'
-    if ptr_type == 'PNVENCGETENCODEPROFILEGUIDS':
-        ptr_type = 'PNVENCGETENCODEPRESETGUIDS'
-
+    
     member_name = mapping[ptr_type]
     fn_name = rustify_name(member_name[5:]) # strip nvEnc
-    print(f'pub(crate) fn {fn_name}(')
+    print('#[inline(always)]')
+    print(f'pub(crate) unsafe fn {fn_name}(')
     print('    &self,')
 
     args = []
@@ -63,15 +64,13 @@ for m in pattern.finditer(sigs):
             print(f'    {var_name}: {typ},')
             args.append(var_name)
     print(') -> Result<()> {')
-    print('    unsafe {')
-    print(f'        let status = (self.functions.{member_name}.unwrap_unchecked())(')
-    print(f'            self.encoder_ptr.as_ptr(),')
+    print(f'    let status = (self.functions.{member_name}.unwrap_unchecked())(')
+    print(f'        self.encoder_ptr.as_ptr(),')
     for arg in args:
-        print(f'            {arg},')
-    print(f'        );')
-    print('        match NvEncError::from_nvenc_status(status) {')
-    print('            None => Ok(()),')
-    print('            Some(err) => Err(err),')
-    print('        }')
+        print(f'        {arg},')
+    print(f'    );')
+    print('    match NvEncError::from_nvenc_status(status) {')
+    print('        None => Ok(()),')
+    print('        Some(err) => Err(err),')
     print('    }')
     print('}')

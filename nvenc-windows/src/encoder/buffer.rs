@@ -1,4 +1,4 @@
-use super::{nvenc_function, Result};
+use super::{RawEncoder, Result};
 use crate::{
     util::{IntoNvEncBufferFormat, NvEncTexture},
     NvEncError,
@@ -26,8 +26,7 @@ unsafe impl Send for NvidiaEncoderBufferItems {}
 
 impl NvidiaEncoderBufferItems {
     pub(crate) fn new<T>(
-        functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-        raw_encoder: NonNull<c_void>,
+        raw_encoder: &RawEncoder,
         buffer_texture: &T,
         subresource_index: u32,
     ) -> Result<Self>
@@ -35,11 +34,11 @@ impl NvidiaEncoderBufferItems {
         T: NvEncTexture,
     {
         let registered_resource =
-            register_input_resource(functions, raw_encoder, buffer_texture, subresource_index)?;
-        let output_buffer = create_output_buffer(functions, raw_encoder)?;
+            register_input_resource(raw_encoder, buffer_texture, subresource_index)?;
+        let output_buffer = create_output_buffer(raw_encoder)?;
 
         let event_obj = EventObject::new().or(Err(NvEncError::AsyncEventCreationFailed))?;
-        let registered_async = register_async_event(functions, raw_encoder, &event_obj)?;
+        let registered_async = register_async_event(raw_encoder, &event_obj)?;
 
         // All calls succeeded, remove the RAII wrappers
 
@@ -61,55 +60,36 @@ impl NvidiaEncoderBufferItems {
         })
     }
 
-    pub(crate) fn cleanup(
-        &mut self,
-        functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-        raw_encoder: NonNull<c_void>,
-    ) {
+    pub(crate) fn cleanup(&mut self, raw_encoder: &RawEncoder) {
         // TODO: Prob should log the errors instead of ignoring them.
         unsafe {
-            (functions.nvEncUnmapInputResource.unwrap_unchecked())(
-                raw_encoder.as_ptr(),
-                self.mapped_input,
-            );
-            (functions.nvEncUnregisterResource.unwrap_unchecked())(
-                raw_encoder.as_ptr(),
-                self.registered_resource.as_ptr(),
-            );
-            (functions.nvEncUnlockBitstream.unwrap_unchecked())(
-                raw_encoder.as_ptr(),
-                self.output_buffer.as_ptr(),
-            );
-            (functions.nvEncDestroyBitstreamBuffer.unwrap_unchecked())(
-                raw_encoder.as_ptr(),
-                self.output_buffer.as_ptr(),
-            );
-            let _ignore = unregister_async_event(functions, raw_encoder, &self.event_obj);
+            let _ = raw_encoder.unmap_input_resource(self.mapped_input);
+            let _ = raw_encoder.unregister_resource(self.registered_resource.as_ptr());
+            let _ = raw_encoder.unlock_bitstream(self.output_buffer.as_ptr());
+            let _ = raw_encoder.destroy_bitstream_buffer(self.output_buffer.as_ptr());
         }
+        let _ignore = unregister_async_event(raw_encoder, &self.event_obj);
     }
 }
 
 struct RegisteredResourceRAII<'a> {
     registered_resource: NonNull<c_void>,
-    functions: &'a nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
+    raw_encoder: &'a RawEncoder,
 }
 
 impl<'a> Drop for RegisteredResourceRAII<'a> {
     fn drop(&mut self) {
         unsafe {
-            let _ignoring = (self.functions.nvEncUnregisterResource.unwrap_unchecked())(
-                self.raw_encoder.as_ptr(),
-                self.registered_resource.as_ptr(),
-            );
+            let _ = self
+                .raw_encoder
+                .unregister_resource(self.registered_resource.as_ptr());
         }
     }
 }
 
 /// Registers the passed texture for NVENC API bookkeeping.
 fn register_input_resource<'a, T>(
-    functions: &'a nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
+    raw_encoder: &'a RawEncoder,
     buffer_texture: &T,
     subresource_index: u32,
 ) -> Result<RegisteredResourceRAII<'a>>
@@ -135,83 +115,65 @@ where
     };
 
     unsafe {
-        nvenc_function!(
-            functions.nvEncRegisterResource,
-            raw_encoder.as_ptr(),
-            &mut register_resource_params
-        );
+        raw_encoder.register_resource(&mut register_resource_params)?;
     }
+
     // Should not fail since `nvEncRegisterResource` succeeded
     let registered_resource =
         NonNull::new(register_resource_params.registeredResource).ok_or(NvEncError::Generic)?;
 
     Ok(RegisteredResourceRAII {
         registered_resource,
-        functions,
         raw_encoder,
     })
 }
 
 struct OutputBufferRAII<'a> {
     output_buffer: NonNull<c_void>,
-    functions: &'a nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
+    raw_encoder: &'a RawEncoder,
 }
 
 impl<'a> Drop for OutputBufferRAII<'a> {
     fn drop(&mut self) {
         unsafe {
-            let _ignoring = (self
-                .functions
-                .nvEncDestroyBitstreamBuffer
-                .unwrap_unchecked())(
-                self.raw_encoder.as_ptr(), self.output_buffer.as_ptr()
-            );
+            let _ = self.raw_encoder
+                .destroy_bitstream_buffer(self.output_buffer.as_ptr());
         }
     }
 }
 
 /// Allocate an output buffer. Should be called only after the encoder has been configured.
-fn create_output_buffer<'a>(
-    functions: &'a nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
-) -> Result<OutputBufferRAII<'a>> {
+fn create_output_buffer<'a>(raw_encoder: &'a RawEncoder) -> Result<OutputBufferRAII<'a>> {
     let mut create_bitstream_buffer_params: nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER =
         unsafe { MaybeUninit::zeroed().assume_init() };
     create_bitstream_buffer_params.version = nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
 
     unsafe {
-        nvenc_function!(
-            functions.nvEncCreateBitstreamBuffer,
-            raw_encoder.as_ptr(),
-            &mut create_bitstream_buffer_params
-        );
+        raw_encoder.create_bitstream_buffer(&mut create_bitstream_buffer_params)?;
     }
+
     // Should not fail since `nvEncCreateBitstreamBuffer` succeeded
     let output_buffer =
         NonNull::new(create_bitstream_buffer_params.bitstreamBuffer).ok_or(NvEncError::Generic)?;
     Ok(OutputBufferRAII {
         output_buffer,
-        functions,
         raw_encoder,
     })
 }
 
 struct AsyncEventRAII<'a, 'b> {
-    event: &'a EventObject,
-    functions: &'b nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
+    event_obj: &'a EventObject,
+    raw_encoder: &'b RawEncoder,
 }
 
 impl<'a, 'b> Drop for AsyncEventRAII<'a, 'b> {
     fn drop(&mut self) {
-        let _ignoring = unregister_async_event(self.functions, self.raw_encoder, self.event);
+        let _ignoring = unregister_async_event(self.raw_encoder, self.event_obj);
     }
 }
 
 fn register_async_event<'a, 'b>(
-    functions: &'b nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
+    raw_encoder: &'b RawEncoder,
     event_obj: &'a EventObject,
 ) -> Result<AsyncEventRAII<'a, 'b>> {
     #[cfg(windows)]
@@ -219,34 +181,21 @@ fn register_async_event<'a, 'b>(
         let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
         event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
         event_params.completionEvent = event_obj.as_ptr();
-        nvenc_function!(
-            functions.nvEncRegisterAsyncEvent,
-            raw_encoder.as_ptr(),
-            &mut event_params
-        );
+        raw_encoder.register_async_event(&mut event_params)?;
     }
     Ok(AsyncEventRAII {
-        event: event_obj,
-        functions,
+        event_obj,
         raw_encoder,
     })
 }
 
-fn unregister_async_event(
-    functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-    raw_encoder: NonNull<c_void>,
-    event_obj: &EventObject,
-) -> Result<()> {
+fn unregister_async_event(raw_encoder: &RawEncoder, event_obj: &EventObject) -> Result<()> {
     #[cfg(windows)]
     unsafe {
         let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
         event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
         event_params.completionEvent = event_obj.as_ptr();
-        nvenc_function!(
-            functions.nvEncUnregisterAsyncEvent,
-            raw_encoder.as_ptr(),
-            &mut event_params
-        );
+        raw_encoder.unregister_async_event(&mut event_params)?;
     }
     Ok(())
 }

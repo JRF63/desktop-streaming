@@ -1,7 +1,6 @@
-use crate::{
-    nvenc_function, util::IntoNvEncBufferFormat, Codec, EncoderPreset, Result, TuningInfo,
-};
-use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
+use super::RawEncoder;
+use crate::{util::IntoNvEncBufferFormat, Codec, EncoderPreset, Result, TuningInfo};
+use std::mem::MaybeUninit;
 
 // TODO: Don't depend on this Windows-specific struct
 use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_DESC;
@@ -18,20 +17,14 @@ impl Drop for EncoderParams {
 
 impl EncoderParams {
     pub(crate) fn new(
-        functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-        raw_encoder: NonNull<c_void>,
+        raw_encoder: &RawEncoder,
         display_desc: &DXGI_OUTDUPL_DESC,
         codec: Codec,
         preset: EncoderPreset,
         tuning_info: TuningInfo,
     ) -> Result<Self> {
-        let mut codec_config = EncoderParams::get_codec_config_for_preset(
-            &functions,
-            raw_encoder,
-            codec,
-            preset,
-            tuning_info,
-        )?;
+        let mut codec_config =
+            EncoderParams::get_codec_config_for_preset(raw_encoder, codec, preset, tuning_info)?;
 
         // https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
         // Settings for optimal performance when using `IDXGIOutputDuplication::AcquireNextFrame`
@@ -89,13 +82,12 @@ impl EncoderParams {
             unsafe { MaybeUninit::zeroed().assume_init() };
         tmp.version = nvenc_sys::NV_ENC_RECONFIGURE_PARAMS_VER;
         tmp.reInitEncodeParams = init_params;
-        
+
         Ok(EncoderParams(tmp))
     }
 
     fn get_codec_config_for_preset(
-        functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-        raw_encoder: NonNull<c_void>,
+        raw_encoder: &RawEncoder,
         codec: Codec,
         preset: EncoderPreset,
         tuning_info: TuningInfo,
@@ -107,17 +99,16 @@ impl EncoderParams {
             let mut_ref = &mut *tmp.as_mut_ptr();
             mut_ref.version = nvenc_sys::NV_ENC_PRESET_CONFIG_VER;
             mut_ref.presetCfg.version = nvenc_sys::NV_ENC_CONFIG_VER;
-            nvenc_function!(
-                functions.nvEncGetEncodePresetConfigEx,
-                raw_encoder.as_ptr(),
+
+            raw_encoder.get_encode_preset_config_ex(
                 encode_guid,
                 preset_guid,
                 tuning_info.into(),
-                tmp.as_mut_ptr()
-            );
+                tmp.as_mut_ptr(),
+            )?;
             tmp.assume_init()
         };
-        
+
         Ok(Box::new(preset_config_params.presetCfg))
     }
 
