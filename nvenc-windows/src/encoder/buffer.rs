@@ -19,8 +19,9 @@ pub(crate) struct NvidiaEncoderBufferItems {
     pub(crate) event_obj: EventObject,
 }
 
-// All of the struct members are managed by either the OS or the NvEnc API. `Send`ing them across
-// threads would not invalidate them.
+// SAFETY: All of the struct members are pointers or pointer-like objects (`HANDLE` for the Event)
+// managed by either the OS or the NvEnc API. `Send`ing them across threads would not invalidate
+// them.
 unsafe impl Send for NvidiaEncoderBufferItems {}
 
 impl NvidiaEncoderBufferItems {

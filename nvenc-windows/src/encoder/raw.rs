@@ -1,3 +1,4 @@
+use super::library::NvidiaEncoderLibrary;
 use crate::{util::NvEncDevice, NvEncError, Result};
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
 
@@ -25,17 +26,85 @@ fn open_encode_session<T: NvEncDevice>(
     }
 }
 
+/// Checks if the user's NvEncAPI version is supported.
+fn is_version_supported(version: u32) -> bool {
+    // TODO: Change this logic once older versions (9.0 to 10.0) are supported
+    let major_version = version >> 4;
+    let minor_version = version & 0b1111;
+    if major_version >= nvenc_sys::NVENCAPI_MAJOR_VERSION
+        && minor_version >= nvenc_sys::NVENCAPI_MINOR_VERSION
+    {
+        true
+    } else {
+        false
+    }
+}
+
+/// Checks the function list for null pointers. They all need to be valid since they are going to
+/// be `unwrap_unchecked` later.
+fn is_function_list_valid(functions: &nvenc_sys::NV_ENCODE_API_FUNCTION_LIST) -> bool {
+    // It could also be transmuted to a &[u8; _] and checked for zeroes that way
+    let helper = || -> Option<()> {
+        functions.nvEncOpenEncodeSession?;
+        functions.nvEncGetEncodeGUIDCount?;
+        functions.nvEncGetEncodeProfileGUIDCount?;
+        functions.nvEncGetEncodeProfileGUIDs?;
+        functions.nvEncGetEncodeGUIDs?;
+        functions.nvEncGetInputFormatCount?;
+        functions.nvEncGetInputFormats?;
+        functions.nvEncGetEncodeCaps?;
+        functions.nvEncGetEncodePresetCount?;
+        functions.nvEncGetEncodePresetGUIDs?;
+        functions.nvEncGetEncodePresetConfig?;
+        functions.nvEncInitializeEncoder?;
+        functions.nvEncCreateInputBuffer?;
+        functions.nvEncDestroyInputBuffer?;
+        functions.nvEncCreateBitstreamBuffer?;
+        functions.nvEncDestroyBitstreamBuffer?;
+        functions.nvEncEncodePicture?;
+        functions.nvEncLockBitstream?;
+        functions.nvEncUnlockBitstream?;
+        functions.nvEncLockInputBuffer?;
+        functions.nvEncUnlockInputBuffer?;
+        functions.nvEncGetEncodeStats?;
+        functions.nvEncGetSequenceParams?;
+        functions.nvEncRegisterAsyncEvent?;
+        functions.nvEncUnregisterAsyncEvent?;
+        functions.nvEncMapInputResource?;
+        functions.nvEncUnmapInputResource?;
+        functions.nvEncDestroyEncoder?;
+        functions.nvEncInvalidateRefFrames?;
+        functions.nvEncOpenEncodeSessionEx?;
+        functions.nvEncRegisterResource?;
+        functions.nvEncUnregisterResource?;
+        functions.nvEncReconfigureEncoder?;
+        functions.nvEncCreateMVBuffer?;
+        functions.nvEncDestroyMVBuffer?;
+        functions.nvEncRunMotionEstimationOnly?;
+        functions.nvEncGetLastErrorString?;
+        functions.nvEncSetIOCudaStreams?;
+        functions.nvEncGetEncodePresetConfigEx?;
+        functions.nvEncGetSequenceParamEx?;
+        Some(())
+    };
+    helper().is_some()
+}
+
 pub(crate) struct RawEncoder {
     encoder_ptr: NonNull<c_void>,
     functions: nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
 }
 
+// SAFETY: The struct members would not be invalidated by being moved to another thread.
 unsafe impl Send for RawEncoder {}
+
+// SAFETY: NvEnc API can handle being called from multiple threads.
+unsafe impl Sync for RawEncoder {}
 
 impl Drop for RawEncoder {
     fn drop(&mut self) {
         unsafe {
-            let _status =
+            let _ =
                 (self.functions.nvEncDestroyEncoder.unwrap_unchecked())(self.encoder_ptr.as_ptr());
         }
     }
@@ -43,9 +112,18 @@ impl Drop for RawEncoder {
 
 impl RawEncoder {
     pub(crate) fn new<T: NvEncDevice>(
-        functions: nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
         device: &T,
     ) -> Result<Self> {
+        let library = NvidiaEncoderLibrary::load()?;
+        if !is_version_supported(library.get_max_supported_version()?) {
+            return Err(NvEncError::UnsupportedVersion);
+        }
+
+        let functions = library.create_instance()?;
+        if !is_function_list_valid(&functions) {
+            return Err(NvEncError::MalformedFunctionList);
+        }
+
         Ok(RawEncoder {
             encoder_ptr: open_encode_session(&functions, device)?,
             functions,

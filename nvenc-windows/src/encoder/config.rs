@@ -2,6 +2,8 @@ use crate::{
     nvenc_function, util::IntoNvEncBufferFormat, Codec, EncoderPreset, Result, TuningInfo,
 };
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
+
+// TODO: Don't depend on this Windows-specific struct
 use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_DESC;
 
 #[repr(transparent)]

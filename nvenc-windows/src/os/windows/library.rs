@@ -1,4 +1,3 @@
-use crate::NvEncError;
 use std::{
     ffi::{CString, OsStr, OsString},
     num::NonZeroIsize,
@@ -38,9 +37,9 @@ impl Drop for WindowsLibrary {
 
 impl WindowsLibrary {
     /// Open a .dll.
-    pub(crate) fn load(lib_name: &str) -> crate::Result<Self> {
-        if !is_system_library_signed(lib_name) {
-            return Err(NvEncError::LibraryNotSigned);
+    pub(crate) fn load2(lib_name: &str) -> crate::Result<Self> {
+        if !WindowsLibrary::is_library_signed(lib_name) {
+            return Err(crate::NvEncError::LibraryNotSigned);
         }
         let lib_name = CString::new(lib_name).unwrap();
         match unsafe {
@@ -55,25 +54,102 @@ impl WindowsLibrary {
                 let nonzero = unsafe { NonZeroIsize::new_unchecked(lib.0) };
                 Ok(WindowsLibrary(nonzero))
             }
-            Err(_) => Err(NvEncError::SharedLibraryLoadingFailed),
+            Err(_) => Err(crate::NvEncError::LibraryLoadingFailed),
         }
     }
 
+    /// Open a .dll from C:\Windows\System32 without verification if it's signed
+    pub(crate) fn load(lib_name: &str) -> windows::core::Result<Self> {
+        let lib_name = CString::new(lib_name).unwrap();
+
+        let lib = unsafe {
+            LoadLibraryExA(
+                PCSTR(lib_name.as_ptr() as *const u8),
+                None,
+                LOAD_LIBRARY_SEARCH_SYSTEM32,
+            )?
+        };
+        // SAFETY: `LoadLibraryExA` returns a non-null pointer on success
+        let nonzero = unsafe { NonZeroIsize::new_unchecked(lib.0) };
+        Ok(WindowsLibrary(nonzero))
+    }
+
     /// Cast `Library` to HINSTANCE for FFI.
-    pub(crate) fn as_inner(&self) -> HINSTANCE {
+    fn as_inner(&self) -> HINSTANCE {
         HINSTANCE(self.0.get())
     }
 
-    /// Extracts the function pointer from the library.
-    pub(crate) fn fn_ptr(
+    /// Extracts the function pointer from the library. The returned function pointer is bound to
+    /// the lifetime `&self`.
+    pub(crate) unsafe fn fn_ptr(
         &self,
         fn_name: &str,
     ) -> windows::core::Result<unsafe extern "system" fn() -> isize> {
         let fn_name = CString::new(fn_name).unwrap();
-        match unsafe { GetProcAddress(self.as_inner(), PCSTR(fn_name.as_ptr() as *const u8)) } {
+        match GetProcAddress(self.as_inner(), PCSTR(fn_name.as_ptr() as *const u8)) {
             Some(ptr) => Ok(ptr),
             None => Err(windows::core::Error::from_win32()),
         }
+    }
+
+    /// Checks if the library is signed. This is different from passing the
+    /// `LOAD_LIBRARY_REQUIRE_SIGNED_TARGET` flag to `LoadLibraryExA`.
+    pub(crate) fn is_library_signed(filename: &str) -> bool {
+        let mut path = get_system32_dir();
+        path.push('\\');
+        path.push_str(filename);
+
+        // Translated into Rust from:
+        // https://docs.microsoft.com/en-us/windows/win32/seccrypto/example-c-program--verifying-the-signature-of-a-pe-file
+        let mut wintrust_action_generic_verify_v2 =
+            GUID::from_u128(0x00AAC56B_CD44_11d0_8CC2_00C04FC295EE);
+
+        let mut filename: Vec<u16> = OsStr::new(&path).encode_wide().collect();
+        filename.push(0);
+
+        let mut file_data = WINTRUST_FILE_INFO {
+            cbStruct: std::mem::size_of::<WINTRUST_FILE_INFO>() as u32,
+            pcwszFilePath: PCWSTR(filename.as_mut_ptr()),
+            hFile: HANDLE(0),
+            pgKnownSubject: std::ptr::null_mut(),
+        };
+
+        let mut trust_data = WINTRUST_DATA {
+            cbStruct: std::mem::size_of::<WINTRUST_DATA>() as u32,
+            pPolicyCallbackData: std::ptr::null_mut(),
+            pSIPClientData: std::ptr::null_mut(),
+            dwUIChoice: WTD_UI_NONE,
+            fdwRevocationChecks: WTD_REVOKE_NONE,
+            dwUnionChoice: WTD_CHOICE_FILE,
+            Anonymous: WINTRUST_DATA_0 {
+                pFile: &mut file_data,
+            },
+            dwStateAction: WTD_STATEACTION_VERIFY,
+            hWVTStateData: HANDLE(0),
+            pwszURLReference: PWSTR(std::ptr::null_mut()),
+            dwProvFlags: WTD_REVOCATION_CHECK_CHAIN,
+            dwUIContext: WINTRUST_DATA_UICONTEXT(0),
+            pSignatureSettings: std::ptr::null_mut(),
+        };
+
+        let verified = unsafe {
+            let s = WinVerifyTrustEx(
+                None,
+                &mut wintrust_action_generic_verify_v2,
+                &mut trust_data,
+            );
+            s == 0
+        };
+
+        trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
+        unsafe {
+            WinVerifyTrustEx(
+                None,
+                &mut wintrust_action_generic_verify_v2,
+                &mut trust_data,
+            );
+        };
+        verified
     }
 }
 
@@ -116,70 +192,10 @@ fn get_system32_dir() -> String {
         .expect("Cannot convert the result of `GetSystemDirectoryW` to a `String`")
 }
 
-/// Checks if the library is signed. This is different from passing the
-/// `LOAD_LIBRARY_REQUIRE_SIGNED_TARGET` flag to `LoadLibraryExA`.
-fn is_system_library_signed(filename: &str) -> bool {
-    let mut path = get_system32_dir();
-    path.push('\\');
-    path.push_str(filename);
-
-    // Translated into Rust from:
-    // https://docs.microsoft.com/en-us/windows/win32/seccrypto/example-c-program--verifying-the-signature-of-a-pe-file
-    let mut wintrust_action_generic_verify_v2 =
-        GUID::from_u128(0x00AAC56B_CD44_11d0_8CC2_00C04FC295EE);
-
-    let mut filename: Vec<u16> = OsStr::new(&path).encode_wide().collect();
-    filename.push(0);
-
-    let mut file_data = WINTRUST_FILE_INFO {
-        cbStruct: std::mem::size_of::<WINTRUST_FILE_INFO>() as u32,
-        pcwszFilePath: PCWSTR(filename.as_mut_ptr()),
-        hFile: HANDLE(0),
-        pgKnownSubject: std::ptr::null_mut(),
-    };
-
-    let mut trust_data = WINTRUST_DATA {
-        cbStruct: std::mem::size_of::<WINTRUST_DATA>() as u32,
-        pPolicyCallbackData: std::ptr::null_mut(),
-        pSIPClientData: std::ptr::null_mut(),
-        dwUIChoice: WTD_UI_NONE,
-        fdwRevocationChecks: WTD_REVOKE_NONE,
-        dwUnionChoice: WTD_CHOICE_FILE,
-        Anonymous: WINTRUST_DATA_0 {
-            pFile: &mut file_data,
-        },
-        dwStateAction: WTD_STATEACTION_VERIFY,
-        hWVTStateData: HANDLE(0),
-        pwszURLReference: PWSTR(std::ptr::null_mut()),
-        dwProvFlags: WTD_REVOCATION_CHECK_CHAIN,
-        dwUIContext: WINTRUST_DATA_UICONTEXT(0),
-        pSignatureSettings: std::ptr::null_mut(),
-    };
-
-    let verified = unsafe {
-        let s = WinVerifyTrustEx(
-            None,
-            &mut wintrust_action_generic_verify_v2,
-            &mut trust_data,
-        );
-        s == 0
-    };
-
-    trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
-    unsafe {
-        WinVerifyTrustEx(
-            None,
-            &mut wintrust_action_generic_verify_v2,
-            &mut trust_data,
-        );
-    };
-    verified
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
     fn library_loading() {
-        super::WindowsLibrary::load("nvEncodeAPI64.dll").unwrap();
+        super::WindowsLibrary::load2("nvEncodeAPI64.dll").unwrap();
     }
 }

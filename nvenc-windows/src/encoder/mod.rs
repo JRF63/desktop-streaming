@@ -1,6 +1,7 @@
 mod buffer;
 mod config;
 mod init;
+mod library;
 mod output;
 mod queries;
 mod raw;
@@ -64,7 +65,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
             "Buffer size must be a power of two"
         );
 
-        let library = WindowsLibrary::load("nvEncodeAPI64.dll")?;
+        let library = WindowsLibrary::load2("nvEncodeAPI64.dll")?;
         if !is_version_supported(&library)? {
             return Err(anyhow::anyhow!(
                 "NVENC version is not supported by the installed driver"

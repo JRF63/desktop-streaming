@@ -61,17 +61,18 @@ pub enum NvEncError {
     #[error("The shared library for `nvEncodeAPI64` is not signed and may have been tampered.")]
     LibraryNotSigned = 0x7fffffff,
     #[error("Loading the shared library for `nvEncodeAPI64` failed.")]
-    SharedLibraryLoadingFailed = 0x7fffffff - 1,
+    LibraryLoadingFailed = 0x7fffffff - 1,
     #[error("Unable to locate `NvEncodeAPIGetMaxSupportedVersion` in the shared library.")]
     GetMaxSupportedVersionLoadingFailed = 0x7fffffff - 2,
     #[error("Unable to locate `NvEncodeAPICreateInstance` in the shared library.")]
     CreateInstanceLoadingFailed = 0x7fffffff - 3,
+    #[error("The installed driver does not support the version of the NvEnc API that this library is compiled with.")]
+    UnsupportedVersion = 0x7fffffff - 4,
+    #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
+    MalformedFunctionList = 0x7fffffff - 5,
 
     #[error("Could not create a Windows event object")]
     AsyncEventCreationFailed= 0x7fffffff - 20,
-    
-    #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
-    MalformedFunctionList = 0x7fffffff - 111,
 }
 
 impl NvEncError {
