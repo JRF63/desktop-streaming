@@ -3,17 +3,17 @@ mod config;
 mod init;
 mod output;
 mod queries;
-mod shared;
 mod raw;
+mod shared;
 
-use crate::{nvenc_function, sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
 use self::{
-    init::*, // TODO: Remove this
-    raw::RawEncoder,
     buffer::NvidiaEncoderBufferItems,
     config::EncoderParams,
+    init::*, // TODO: Remove this
     output::EncoderOutput,
+    raw::RawEncoder,
 };
+use crate::{nvenc_function, sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
 
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull, sync::Arc};
 use windows::{
@@ -59,7 +59,10 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
         preset: EncoderPreset,
         tuning_info: TuningInfo,
     ) -> anyhow::Result<(Self, EncoderParams)> {
-        assert!(BUF_SIZE.count_ones() == 1, "Buffer size must be a power of two");
+        assert!(
+            BUF_SIZE.count_ones() == 1,
+            "Buffer size must be a power of two"
+        );
 
         let library = WindowsLibrary::load("nvEncodeAPI64.dll")?;
         if !is_version_supported(&library)? {
@@ -124,12 +127,18 @@ pub struct NvidiaEncoder<const BUF_SIZE: usize> {
     encoder_params: EncoderParams,
 }
 
+impl<const BUF_SIZE: usize> Drop for NvidiaEncoder<BUF_SIZE> {
+    fn drop(&mut self) {
+        let _ = self.end_encode();
+    }
+}
+
 impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     pub(crate) fn new(
         shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
         device_context: ID3D11DeviceContext,
         buffer_texture: ID3D11Texture2D,
-        encoder_params: EncoderParams,
+        mut encoder_params: EncoderParams,
     ) -> Self {
         let pic_params = {
             let mut tmp: nvenc_sys::NV_ENC_PIC_PARAMS =
@@ -145,18 +154,18 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
 
         // println!("NV_ENC_INITIALIZE_PARAMS ----");
         // println!("{:?}", &tmp.reInitEncodeParams);
-        // println!("NV_ENC_CONFIG ----");
-        // let c = encoder_params.encode_config_mut();
-        // println!("profileGUID: {:?}", &c.profileGUID);
-        // println!("gopLength: {:?}", &c.gopLength);
-        // println!("frameIntervalP: {:?}", &c.frameIntervalP);
-        // println!("monoChromeEncoding: {:?}", &c.monoChromeEncoding);
-        // println!("frameFieldMode: {:?}", &c.frameFieldMode);
-        // println!("mvPrecision: {:?}", &c.mvPrecision);
-        // println!("NV_ENC_RC_PARAMS ----");
-        // println!("mvPrecision: {:?}", &c.rcParams);
-        // println!("NV_ENC_CONFIG_H264 ----");
-        // println!("{:?}", unsafe { &c.encodeCodecConfig.h264Config });
+        println!("NV_ENC_CONFIG ----");
+        let c = encoder_params.encode_config_mut();
+        println!("profileGUID: {:?}", &c.profileGUID);
+        println!("gopLength: {:?}", &c.gopLength);
+        println!("frameIntervalP: {:?}", &c.frameIntervalP);
+        println!("monoChromeEncoding: {:?}", &c.monoChromeEncoding);
+        println!("frameFieldMode: {:?}", &c.frameFieldMode);
+        println!("mvPrecision: {:?}", &c.mvPrecision);
+        println!("NV_ENC_RC_PARAMS ----");
+        println!("mvPrecision: {:?}", &c.rcParams);
+        println!("NV_ENC_CONFIG_H264 ----");
+        println!("{:?}", unsafe { &c.encodeCodecConfig.h264Config });
 
         NvidiaEncoder {
             shared,
@@ -167,9 +176,21 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         }
     }
 
-    pub fn end_encode(&mut self) {
-        todo!()
-        // self.pic_params.encodePicFlags = nvenc_sys::NV_ENC_PIC_FLAG_EOS;
+    pub fn end_encode(&mut self) -> Result<()> {
+        // let mut eos_pic_params: nvenc_sys::NV_ENC_PIC_PARAMS =
+        //     unsafe { MaybeUninit::zeroed().assume_init() };
+        // eos_pic_params.version = nvenc_sys::NV_ENC_PIC_PARAMS_VER;
+        // eos_pic_params.encodePicFlags = nvenc_sys::NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_EOS as u32;
+        // // eos_pic_params.completionEvent = todo!();
+
+        // unsafe {
+        //     nvenc_function!(
+        //         self.shared.functions.nvEncEncodePicture,
+        //         self.shared.raw_encoder.as_ptr(),
+        //         &mut eos_pic_params
+        //     );
+        // }
+        Ok(())
     }
 
     pub(crate) fn reconfigure_params(&mut self) -> Result<()> {
@@ -215,7 +236,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         }
     }
 
-    pub fn encode_frame(&mut self, frame: IDXGIResource, timestamp: u32) -> Result<()> {
+    pub fn encode_frame(&mut self, frame: IDXGIResource, timestamp: u64) -> Result<()> {
         let pic_params = &mut self.pic_params;
         let device_context = &self.device_context;
         let input_textures = &self.buffer_texture;
@@ -223,7 +244,12 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         let raw_encoder = self.shared.raw_encoder;
 
         self.shared.buffer.writer_access(|index, buffer| {
-            NvidiaEncoder::<BUF_SIZE>::copy_input_frame(device_context, input_textures, &frame, index);
+            NvidiaEncoder::<BUF_SIZE>::copy_input_frame(
+                device_context,
+                input_textures,
+                &frame,
+                index,
+            );
             // TODO: Call ReleaseFrame after copying and drop the IDXGIResource
 
             buffer.mapped_input = NvidiaEncoder::<BUF_SIZE>::map_input(
@@ -240,7 +266,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         std::mem::drop(frame);
 
         // Used for invalidation of frames
-        self.pic_params.inputTimeStamp = timestamp as u64;
+        self.pic_params.inputTimeStamp = timestamp;
 
         unsafe {
             nvenc_function!(

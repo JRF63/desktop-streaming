@@ -15,5 +15,6 @@ features = [
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
+    "Win32_System_Performance",
     "Win32_UI_HiDpi"
 ]

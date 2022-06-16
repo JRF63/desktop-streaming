@@ -11,10 +11,12 @@ pub(crate) trait NvEncDevice {
 }
 
 pub(crate) trait NvEncTexture {
+    type Format: IntoNvEncBufferFormat;
+
     fn resource_type() -> nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE;
 
     /// Returns (width, height, texture_format)
-    fn desc(&self) -> (u32, u32, Box<dyn crate::util::IntoNvEncBufferFormat>);
+    fn desc(&self) -> (u32, u32, Self::Format);
 
     fn as_ptr(&self) -> *mut c_void;
 }

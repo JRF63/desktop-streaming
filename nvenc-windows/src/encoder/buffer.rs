@@ -1,5 +1,8 @@
 use super::{nvenc_function, Result};
-use crate::{util::NvEncTexture, NvEncError};
+use crate::{
+    util::{IntoNvEncBufferFormat, NvEncTexture},
+    NvEncError,
+};
 use std::{
     mem::{ManuallyDrop, MaybeUninit},
     os::raw::c_void,
@@ -71,6 +74,10 @@ impl NvidiaEncoderBufferItems {
             (functions.nvEncUnregisterResource.unwrap_unchecked())(
                 raw_encoder.as_ptr(),
                 self.registered_resource.as_ptr(),
+            );
+            (functions.nvEncUnlockBitstream.unwrap_unchecked())(
+                raw_encoder.as_ptr(),
+                self.output_buffer.as_ptr(),
             );
             (functions.nvEncDestroyBitstreamBuffer.unwrap_unchecked())(
                 raw_encoder.as_ptr(),
@@ -206,7 +213,7 @@ fn register_async_event<'a, 'b>(
     raw_encoder: NonNull<c_void>,
     event_obj: &'a EventObject,
 ) -> Result<AsyncEventRAII<'a, 'b>> {
-    #[cfg(target_os = "windows")]
+    #[cfg(windows)]
     unsafe {
         let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
         event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
@@ -229,7 +236,7 @@ fn unregister_async_event(
     raw_encoder: NonNull<c_void>,
     event_obj: &EventObject,
 ) -> Result<()> {
-    #[cfg(target_os = "windows")]
+    #[cfg(windows)]
     unsafe {
         let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
         event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;

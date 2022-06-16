@@ -4,7 +4,7 @@ use windows::Win32::Graphics::{
         ID3D11Device, ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_CPU_ACCESS_FLAG,
         D3D11_RESOURCE_MISC_FLAG, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
     },
-    Dxgi::{Common::DXGI_SAMPLE_DESC, DXGI_OUTDUPL_DESC},
+    Dxgi::{Common::{DXGI_SAMPLE_DESC, DXGI_FORMAT}, DXGI_OUTDUPL_DESC},
 };
 
 impl crate::util::NvEncDevice for ID3D11Device {
@@ -18,6 +18,8 @@ impl crate::util::NvEncDevice for ID3D11Device {
 }
 
 impl crate::util::NvEncTexture for ID3D11Texture2D {
+    type Format = DXGI_FORMAT;
+
     fn resource_type() -> nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE {
         nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX
     }
@@ -26,7 +28,7 @@ impl crate::util::NvEncTexture for ID3D11Texture2D {
         unsafe { std::mem::transmute(self.clone()) }
     }
 
-    fn desc(&self) -> (u32, u32, Box<dyn crate::util::IntoNvEncBufferFormat>) {
+    fn desc(&self) -> (u32, u32, Self::Format) {
         let texture_desc = unsafe {
             let mut tmp = MaybeUninit::uninit();
             self.GetDesc(tmp.as_mut_ptr());
@@ -35,7 +37,7 @@ impl crate::util::NvEncTexture for ID3D11Texture2D {
         (
             texture_desc.Width,
             texture_desc.Height,
-            Box::new(texture_desc.Format),
+            texture_desc.Format,
         )
     }
 }

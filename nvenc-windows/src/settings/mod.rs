@@ -1,6 +1,6 @@
 mod guids;
 
-use guids::*;
+pub(crate) use guids::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Codec {

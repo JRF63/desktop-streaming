@@ -6,6 +6,7 @@ use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIM
 
 use std::fs::File;
 use std::io::prelude::*;
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 
 fn main() {
     let display_index = 0;
@@ -30,28 +31,43 @@ fn main() {
         tuning_info,
     );
 
+    let end = Arc::new(AtomicBool::new(false));
+    let eos = end.clone();
+
     let a = std::thread::spawn(move || {
         let mut i = 0;
 
-        while let Ok(_) = encoder_output.wait_for_output(|lock| {
-            println!(
-                "{}: {} bytes",
-                lock.outputTimeStamp, lock.bitstreamSizeInBytes
-            );
+        let mut timestamps = Vec::with_capacity(120);
+        
+        while !eos.load(Ordering::Acquire) {
+            if let Ok(_) = encoder_output.wait_for_output(|lock| {
+                println!(
+                    "{} - {}: {} bytes",
+                    lock.frameIdx, lock.outputTimeStamp, lock.bitstreamSizeInBytes
+                );
 
-            let mut file = File::create(format!("target/dump/{}.h264", i)).unwrap();
-            i += 1;
+                let now = timer_counter() as u64;
+                timestamps.push(now - lock.outputTimeStamp);
 
-            let slice = unsafe {
-                std::slice::from_raw_parts(
-                    lock.bitstreamBufferPtr as *const u8,
-                    lock.bitstreamSizeInBytes as usize,
-                )
-            };
-
-            file.write_all(slice).unwrap();
-        }) {}
+                // let mut file = File::create(format!("target/dump/{}.h264", i)).unwrap();
+                // i += 1;
+    
+                // let slice = unsafe {
+                //     std::slice::from_raw_parts(
+                //         lock.bitstreamBufferPtr as *const u8,
+                //         lock.bitstreamSizeInBytes as usize,
+                //     )
+                // };
+    
+                // file.write_all(slice).unwrap();
+            }) {}
+        }
+        let div = timer_frequency() as u64 / 1000000;
+        for v in &mut timestamps {
+            *v /= div;
+        }
         println!("Exiting");
+        print_stats(&timestamps);
     });
 
     {
@@ -79,11 +95,43 @@ fn main() {
         };
 
         encoder
-            .encode_frame(resource, info.LastPresentTime as u32)
+            .encode_frame(resource, info.LastPresentTime as u64)
             .unwrap();
         duplicator.release_frame().unwrap();
     }
 
     std::mem::drop(encoder);
+    end.store(true, Ordering::Release);
     a.join().unwrap();
+}
+
+fn print_stats(deltas: &[u64]) {
+    let sum: f64 = deltas.iter().map(|&x| x as f64).sum();
+    let ave = sum / deltas.len() as f64;
+    let sum_sqdiff: f64 = deltas
+        .iter()
+        .map(|&x| {
+            let diff = x as f64 - ave;
+            diff * diff
+        })
+        .sum();
+    let stddev = (sum_sqdiff / deltas.len() as f64).sqrt();
+    println!("|Average|{}|", ave);
+    println!("|Stddev|{}|", stddev);
+}
+
+fn timer_counter() -> i64 {
+    let mut now = 0;
+    unsafe {
+        windows::Win32::System::Performance::QueryPerformanceCounter(&mut now);
+        now
+    }
+}
+
+fn timer_frequency() -> i64 {
+    let mut freq = 0;
+    unsafe {
+        windows::Win32::System::Performance::QueryPerformanceFrequency(&mut freq);
+        freq
+    }
 }

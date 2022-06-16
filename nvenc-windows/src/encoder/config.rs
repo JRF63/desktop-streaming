@@ -46,7 +46,6 @@ impl EncoderParams {
                 h264_config.set_disableSVCPrefixNalu(1);
                 // SPS/PPS would be manually given to the decoder
                 h264_config.set_disableSPSPPS(1);
-                // TODO: disable outputAUD?
             }
             Codec::Hevc => {
                 let hevc_config = unsafe { &mut codec_config.encodeCodecConfig.hevcConfig };
@@ -57,7 +56,6 @@ impl EncoderParams {
                 hevc_config.set_enableAlphaLayerEncoding(0);
                 // VPS/SPS/PPS would be manually given to the decoder
                 hevc_config.set_disableSPSPPS(1);
-                // TODO: disable outputAUD?
             }
         }
 
@@ -73,13 +71,16 @@ impl EncoderParams {
         init_params.darHeight = display_desc.ModeDesc.Height / gcd;
         init_params.frameRateNum = display_desc.ModeDesc.RefreshRate.Numerator;
         init_params.frameRateDen = display_desc.ModeDesc.RefreshRate.Denominator;
-        init_params.enablePTD = 1; // TODO: Currently enabling picture type detection for convenience
+        init_params.enablePTD = 1;
         init_params.encodeConfig = Box::into_raw(codec_config);
         init_params.tuningInfo = tuning_info.into();
         init_params.bufferFormat = display_desc.ModeDesc.Format.into_nvenc_buffer_format();
 
         // Settings for optimal performance same as above
-        init_params.enableEncodeAsync = 1;
+        #[cfg(windows)]
+        {
+            init_params.enableEncodeAsync = 1;
+        }
         init_params.set_enableOutputInVidmem(0);
 
         let mut tmp: nvenc_sys::NV_ENC_RECONFIGURE_PARAMS =
