@@ -45,9 +45,9 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
 
     /// Modify an item on the buffer. Blocks if the buffer is full.
     #[inline]
-    pub(crate) fn writer_access<F>(&self, mut modify_op: F)
+    pub(crate) fn writer_access<F, S, R>(&self, args: S, mut modify_op: F) -> R
     where
-        F: FnMut(usize, &mut T),
+        F: FnMut(usize, &mut T, S) -> R,
     {
         // `Ordering::Release` would be possible if `CyclicBuffer` is purposely not `Send` since
         // in that case, the value read here would only be from the last `Ordering::Release` on the
@@ -65,12 +65,13 @@ impl<T, const N: usize> CyclicBuffer<T, N> {
         }
 
         let index = head & (N - 1);
-        unsafe {
+        let result = unsafe {
             let cell = self.buffer.get_unchecked(index);
-            modify_op(index, &mut *cell.get());
-        }
+            modify_op(index, &mut *cell.get(), args)
+        };
 
         self.head.store(head + 1, Ordering::Release);
+        result
     }
 
     /// Read an item on the buffer. Blocks if the buffer is empty.

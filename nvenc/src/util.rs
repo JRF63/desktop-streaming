@@ -21,6 +21,19 @@ pub(crate) trait NvEncTexture {
     fn as_ptr(&self) -> *mut c_void;
 }
 
+pub(crate) trait NvEncSessionParameters {
+    type Format: IntoNvEncBufferFormat;
+
+    /// Returns (encode width, encode height)
+    fn resolution(&self) -> (u32, u32);
+
+    fn display_aspect_ratio(&self) -> (u32, u32) {
+        let (width, height) = self.resolution();
+        let divisor = gcd(width, height);
+        (width / divisor, height / divisor)
+    }
+}
+
 // https://en.wikipedia.org/wiki/Binary_GCD_algorithm
 pub(crate) fn gcd(mut u: u32, mut v: u32) -> u32 {
     use std::cmp::min;

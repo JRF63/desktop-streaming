@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nvenc-windows = { path = "../nvenc-windows" }
+nvenc = { path = "../nvenc" }
 crossbeam-channel = "0.5"
 
 [dependencies.windows]

@@ -7,11 +7,11 @@ mod raw;
 mod shared;
 
 use self::{
-    buffer::NvidiaEncoderBufferItems, config::EncoderParams, output::EncoderOutput, raw::RawEncoder,
+    config::EncoderParams, output::EncoderOutput, raw::RawEncoder, shared::NvidiaEncoderShared,
 };
-use crate::{sync::CyclicBuffer, Codec, EncoderPreset, Result, TuningInfo};
-
+use crate::{Codec, EncoderPreset, Result, TuningInfo};
 use std::{mem::MaybeUninit, sync::Arc};
+
 use windows::{
     core::Interface,
     Win32::Graphics::{
@@ -20,74 +20,7 @@ use windows::{
     },
 };
 
-use crate::os::windows::{create_texture_buffer};
-
-pub(crate) struct NvidiaEncoderShared<const BUF_SIZE: usize> {
-    raw_encoder: RawEncoder,
-    buffer: CyclicBuffer<NvidiaEncoderBufferItems, BUF_SIZE>,
-}
-
-impl<const BUF_SIZE: usize> Drop for NvidiaEncoderShared<BUF_SIZE> {
-    fn drop(&mut self) {
-        for buffer in self.buffer.get_mut() {
-            buffer.get_mut().cleanup(&self.raw_encoder);
-        }
-    }
-}
-
-// TODO: `Sync` and `Send` are technically wrong
-unsafe impl<const BUF_SIZE: usize> Sync for NvidiaEncoderShared<BUF_SIZE> {}
-unsafe impl<const BUF_SIZE: usize> Send for NvidiaEncoderShared<BUF_SIZE> {}
-
-impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
-    pub(crate) fn new(
-        device: ID3D11Device,
-        display_desc: &DXGI_OUTDUPL_DESC,
-        buffer_texture: &ID3D11Texture2D,
-        codec: Codec,
-        preset: EncoderPreset,
-        tuning_info: TuningInfo,
-    ) -> anyhow::Result<(Self, EncoderParams)> {
-        assert!(
-            BUF_SIZE.count_ones() == 1,
-            "Buffer size must be a power of two"
-        );
-
-        let raw_encoder = RawEncoder::new(&device)?;
-
-        let mut encoder_params =
-            EncoderParams::new(&raw_encoder, display_desc, codec, preset, tuning_info)?;
-
-        unsafe {
-            raw_encoder.initialize_encoder(encoder_params.init_params_mut())?;
-        }
-
-        let buffer = unsafe {
-            let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; BUF_SIZE]>::uninit();
-
-            // Pointer to the start of the array's buffer
-            let mut ptr = (&mut *buffer.as_mut_ptr()).as_mut_ptr();
-
-            for i in 0..BUF_SIZE {
-                ptr.write(NvidiaEncoderBufferItems::new(
-                    &raw_encoder,
-                    buffer_texture,
-                    i as u32,
-                )?);
-                ptr = ptr.offset(1);
-            }
-            buffer.assume_init()
-        };
-
-        Ok((
-            NvidiaEncoderShared {
-                raw_encoder,
-                buffer: CyclicBuffer::new(buffer),
-            },
-            encoder_params,
-        ))
-    }
-}
+use crate::os::windows::create_texture_buffer;
 
 pub struct NvidiaEncoder<const BUF_SIZE: usize> {
     shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
@@ -108,7 +41,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
         device_context: ID3D11DeviceContext,
         buffer_texture: ID3D11Texture2D,
-        mut encoder_params: EncoderParams,
+        encoder_params: EncoderParams,
     ) -> Self {
         let pic_params = {
             let mut tmp: nvenc_sys::NV_ENC_PIC_PARAMS =
@@ -122,19 +55,20 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
             tmp
         };
 
-        // println!("NV_ENC_INITIALIZE_PARAMS ----");
-        // println!("{:?}", &tmp.reInitEncodeParams);
-        println!("NV_ENC_CONFIG ----");
-        let c = encoder_params.encode_config_mut();
+        println!("NV_ENC_INITIALIZE_PARAMS ----");
+        println!("{:?}", &encoder_params.reconfig_params());
+        println!("\nNV_ENC_CONFIG ----");
+        let c = encoder_params.encode_config();
+        println!("version: {:?}", &c.version);
         println!("profileGUID: {:?}", &c.profileGUID);
         println!("gopLength: {:?}", &c.gopLength);
         println!("frameIntervalP: {:?}", &c.frameIntervalP);
         println!("monoChromeEncoding: {:?}", &c.monoChromeEncoding);
         println!("frameFieldMode: {:?}", &c.frameFieldMode);
         println!("mvPrecision: {:?}", &c.mvPrecision);
-        println!("NV_ENC_RC_PARAMS ----");
-        println!("mvPrecision: {:?}", &c.rcParams);
-        println!("NV_ENC_CONFIG_H264 ----");
+        println!("\nNV_ENC_RC_PARAMS ----");
+        println!("{:?}", &c.rcParams);
+        println!("\nNV_ENC_CONFIG_H264 ----");
         println!("{:?}", unsafe { &c.encodeCodecConfig.h264Config });
 
         NvidiaEncoder {
@@ -183,9 +117,9 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     }
 
     pub fn get_codec_specific_data(&self) -> Result<Vec<u8>> {
+        let mut buffer = vec![0; 1024];
+        let mut bytes_written = 0;
         unsafe {
-            let mut buffer = vec![0; 1024];
-            let mut bytes_written = 0;
             let mut sequence_param_payload: nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD =
                 MaybeUninit::zeroed().assume_init();
             sequence_param_payload.version = nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;
@@ -196,38 +130,45 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
             self.shared
                 .raw_encoder
                 .get_sequence_params(&mut sequence_param_payload)?;
-
-            buffer.truncate(bytes_written as usize);
-            Ok(buffer)
         }
+        buffer.truncate(bytes_written as usize);
+        Ok(buffer)
     }
 
-    pub fn encode_frame(&mut self, frame: IDXGIResource, timestamp: u64) -> Result<()> {
+    pub fn encode_frame<F>(
+        &mut self,
+        frame: IDXGIResource,
+        timestamp: u64,
+        mut post_copy_op: F,
+    ) -> Result<()>
+    where
+        F: FnMut(),
+    {
         let pic_params = &mut self.encode_pic_params;
         let device_context = &self.device_context;
         let input_textures = &self.buffer_texture;
         let raw_encoder = &self.shared.raw_encoder;
 
-        self.shared.buffer.writer_access(|index, buffer| {
-            NvidiaEncoder::<BUF_SIZE>::copy_input_frame(
-                device_context,
-                input_textures,
-                &frame,
-                index,
-            );
-            // TODO: Call ReleaseFrame after copying and drop the IDXGIResource
+        self.shared
+            .buffer
+            .writer_access(frame, |index, buffer, frame| {
+                NvidiaEncoder::<BUF_SIZE>::copy_input_frame(
+                    device_context,
+                    input_textures,
+                    frame,
+                    index,
+                );
+                post_copy_op();
 
-            buffer.mapped_input = NvidiaEncoder::<BUF_SIZE>::map_input(
-                raw_encoder,
-                buffer.registered_resource.as_ptr(),
-            )
-            .unwrap();
-            pic_params.inputBuffer = buffer.mapped_input;
-            pic_params.outputBitstream = buffer.output_buffer.as_ptr();
-            pic_params.completionEvent = buffer.event_obj.as_ptr();
-        });
-        // Already copied
-        std::mem::drop(frame);
+                buffer.mapped_input = NvidiaEncoder::<BUF_SIZE>::map_input(
+                    raw_encoder,
+                    buffer.registered_resource.as_ptr(),
+                )?;
+                pic_params.inputBuffer = buffer.mapped_input;
+                pic_params.outputBitstream = buffer.output_buffer.as_ptr();
+                pic_params.completionEvent = buffer.event_obj.as_ptr();
+                Ok(())
+            })?;
 
         // Used for invalidation of frames
         self.encode_pic_params.inputTimeStamp = timestamp;
@@ -245,7 +186,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     fn copy_input_frame(
         device_context: &ID3D11DeviceContext,
         input_textures: &ID3D11Texture2D,
-        frame: &IDXGIResource,
+        frame: IDXGIResource,
         subresource_index: usize,
     ) {
         unsafe {
@@ -298,7 +239,7 @@ pub fn create_encoder<const BUF_SIZE: usize>(
     let buffer_texture = create_texture_buffer(&device, display_desc, BUF_SIZE).unwrap();
 
     let (encoder, encoder_params) = NvidiaEncoderShared::new(
-        device,
+        &device,
         display_desc,
         &buffer_texture,
         codec,

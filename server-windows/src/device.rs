@@ -50,8 +50,10 @@ pub fn create_d3d11_device() -> Result<ID3D11Device> {
         device.GetImmediateContext(&mut tmp);
         tmp.unwrap()
     };
+    
     let multithreaded: ID3D11Multithread = device_context.cast().unwrap();
     unsafe {
+        // Needed to prevent random deadlocks. The performance cost is quite negligible.
         multithreaded.SetMultithreadProtected(true);
     }
 

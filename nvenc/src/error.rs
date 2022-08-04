@@ -2,6 +2,7 @@
 #[derive(thiserror::Error, Debug)]
 pub enum NvEncError {
     // NvENC API errors
+    // TODO: Get these from `NvEncGetLastErrorString` instead?
     #[error("No encode capable devices were detected.")]
     NoEncodeDevice = 1,
     #[error("Devices pass by the client is not supported.")]

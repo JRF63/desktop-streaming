@@ -2,8 +2,8 @@
 
 use std::ops::{Deref, DerefMut};
 
-#[repr(align(128))]
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(align(128))]
 pub(crate) struct CacheAligned<T>(T);
 
 impl<T> Deref for CacheAligned<T> {

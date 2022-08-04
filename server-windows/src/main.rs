@@ -1,12 +1,15 @@
 mod capture;
 mod device;
 
-use nvenc_windows::{Codec, EncoderPreset, TuningInfo};
+use nvenc::{Codec, EncoderPreset, TuningInfo};
 use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT};
 
 use std::fs::File;
 use std::io::prelude::*;
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 fn main() {
     let display_index = 0;
@@ -23,7 +26,7 @@ fn main() {
         capture::ScreenDuplicator::new(device.clone(), display_index, &formats).unwrap();
     let display_desc = duplicator.desc();
 
-    let (mut encoder, encoder_output) = nvenc_windows::create_encoder::<BUF_SIZE>(
+    let (mut encoder, encoder_output) = nvenc::create_encoder::<BUF_SIZE>(
         device,
         &display_desc,
         codec,
@@ -31,35 +34,50 @@ fn main() {
         tuning_info,
     );
 
+    // {
+    //     for codec in &encoder.codecs().unwrap() {
+    //         println!("{:?}", codec);
+    //         println!("    {:?}", &encoder.codec_profiles(*codec));
+    //         println!("    {:?}", &encoder.supported_input_formats(*codec));
+    //     }
+
+    //     let csd = encoder.get_codec_specific_data().unwrap();
+    //     println!("\nSPS:\n{},{:b},{}", csd[5], csd[6], csd[7]);
+    //     return;
+    // }
+
     let end = Arc::new(AtomicBool::new(false));
     let eos = end.clone();
 
     let a = std::thread::spawn(move || {
+        // For debugging
+        #[allow(unused_variables, unused_mut)]
         let mut i = 0;
 
         let mut timestamps = Vec::with_capacity(120);
-        
+
         while !eos.load(Ordering::Acquire) {
             if let Ok(_) = encoder_output.wait_for_output(|lock| {
+                let now = timer_counter() as u64;
+                let time_delta = now - lock.outputTimeStamp;
+                timestamps.push(time_delta);
+
                 println!(
                     "{} - {}: {} bytes",
-                    lock.frameIdx, lock.outputTimeStamp, lock.bitstreamSizeInBytes
+                    lock.frameIdx, time_delta, lock.bitstreamSizeInBytes
                 );
 
-                let now = timer_counter() as u64;
-                timestamps.push(now - lock.outputTimeStamp);
+                // let mut file = File::create(format!("nvenc-windows/regex/nalus/{}.h264", i)).unwrap();
+                // i += 1;
 
-                let mut file = File::create(format!("nvenc-windows/regex/nalus/{}.h264", i)).unwrap();
-                i += 1;
-    
-                let slice = unsafe {
-                    std::slice::from_raw_parts(
-                        lock.bitstreamBufferPtr as *const u8,
-                        lock.bitstreamSizeInBytes as usize,
-                    )
-                };
-    
-                file.write_all(slice).unwrap();
+                // let slice = unsafe {
+                //     std::slice::from_raw_parts(
+                //         lock.bitstreamBufferPtr as *const u8,
+                //         lock.bitstreamSizeInBytes as usize,
+                //     )
+                // };
+
+                // file.write_all(slice).unwrap();
             }) {}
         }
         let div = timer_frequency() as u64 / 1000000;
@@ -68,11 +86,13 @@ fn main() {
         }
         println!("Exiting");
         print_stats(&timestamps);
+        println!("\nWithout the first delta:");
+        print_stats(&timestamps[1..]);
     });
 
     {
-        let mut file = File::create("nvenc-windows/regex/nalus/csd.bin").unwrap();
         let csd = encoder.get_codec_specific_data().unwrap();
+        let mut file = File::create("nvenc-windows/regex/nalus/csd.bin").unwrap();
         file.write_all(&csd).unwrap();
     }
 
@@ -95,9 +115,10 @@ fn main() {
         };
 
         encoder
-            .encode_frame(resource, info.LastPresentTime as u64)
+            .encode_frame(resource, info.LastPresentTime as u64, || {
+                duplicator.release_frame().unwrap()
+            })
             .unwrap();
-        duplicator.release_frame().unwrap();
     }
 
     std::mem::drop(encoder);

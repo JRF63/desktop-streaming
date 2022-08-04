@@ -1,3 +1,2 @@
 [workspace]
-members = ["nvenc-windows", "server-windows"]
-exclude = ["client-android", "client-android-native-lib"]
+members = ["nvenc", "nvenc-sys", "server-windows", "spsc"]
