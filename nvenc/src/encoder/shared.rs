@@ -8,12 +8,12 @@ use std::mem::MaybeUninit;
 
 use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_DESC;
 
-pub(crate) struct NvidiaEncoderShared<const BUF_SIZE: usize> {
+pub(crate) struct NvidiaEncoderShared<const N: usize> {
     pub(crate) raw_encoder: RawEncoder,
-    pub(crate) buffer: CyclicBuffer<NvidiaEncoderBufferItems, BUF_SIZE>,
+    pub(crate) buffer: CyclicBuffer<NvidiaEncoderBufferItems, N>,
 }
 
-impl<const BUF_SIZE: usize> Drop for NvidiaEncoderShared<BUF_SIZE> {
+impl<const N: usize> Drop for NvidiaEncoderShared<N> {
     fn drop(&mut self) {
         for buffer in self.buffer.get_mut() {
             buffer.get_mut().cleanup(&self.raw_encoder);
@@ -21,7 +21,7 @@ impl<const BUF_SIZE: usize> Drop for NvidiaEncoderShared<BUF_SIZE> {
     }
 }
 
-impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
+impl<const N: usize> NvidiaEncoderShared<N> {
     pub(crate) fn new<D, T>(
         device: &D,
         display_desc: &DXGI_OUTDUPL_DESC,
@@ -35,7 +35,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
         T: NvEncTexture,
     {
         assert!(
-            BUF_SIZE.count_ones() == 1,
+            N.count_ones() == 1,
             "Buffer size must be a power of two"
         );
 
@@ -49,12 +49,12 @@ impl<const BUF_SIZE: usize> NvidiaEncoderShared<BUF_SIZE> {
         }
 
         let buffer = unsafe {
-            let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; BUF_SIZE]>::uninit();
+            let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; N]>::uninit();
 
             // Pointer to the start of the array's buffer
             let mut ptr = (&mut *buffer.as_mut_ptr()).as_mut_ptr();
 
-            for i in 0..BUF_SIZE {
+            for i in 0..N {
                 ptr.write(NvidiaEncoderBufferItems::new(
                     &raw_encoder,
                     buffer_texture,

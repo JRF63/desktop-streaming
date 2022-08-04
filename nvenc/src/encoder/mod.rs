@@ -22,23 +22,23 @@ use windows::{
 
 use crate::os::windows::create_texture_buffer;
 
-pub struct NvidiaEncoder<const BUF_SIZE: usize> {
-    shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
+pub struct NvidiaEncoder<const N: usize> {
+    shared: Arc<NvidiaEncoderShared<N>>,
     device_context: ID3D11DeviceContext,
     buffer_texture: ID3D11Texture2D,
     encode_pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
     encoder_params: EncoderParams,
 }
 
-impl<const BUF_SIZE: usize> Drop for NvidiaEncoder<BUF_SIZE> {
+impl<const N: usize> Drop for NvidiaEncoder<N> {
     fn drop(&mut self) {
         let _ = self.end_encode();
     }
 }
 
-impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
+impl<const N: usize> NvidiaEncoder<N> {
     pub(crate) fn new(
-        shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
+        shared: Arc<NvidiaEncoderShared<N>>,
         device_context: ID3D11DeviceContext,
         buffer_texture: ID3D11Texture2D,
         encoder_params: EncoderParams,
@@ -152,7 +152,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
         self.shared
             .buffer
             .writer_access(frame, |index, buffer, frame| {
-                NvidiaEncoder::<BUF_SIZE>::copy_input_frame(
+                NvidiaEncoder::<N>::copy_input_frame(
                     device_context,
                     input_textures,
                     frame,
@@ -160,7 +160,7 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
                 );
                 post_copy_op();
 
-                buffer.mapped_input = NvidiaEncoder::<BUF_SIZE>::map_input(
+                buffer.mapped_input = NvidiaEncoder::<N>::map_input(
                     raw_encoder,
                     buffer.registered_resource.as_ptr(),
                 )?;
@@ -224,19 +224,19 @@ impl<const BUF_SIZE: usize> NvidiaEncoder<BUF_SIZE> {
     }
 }
 
-pub fn create_encoder<const BUF_SIZE: usize>(
+pub fn create_encoder<const N: usize>(
     device: ID3D11Device,
     display_desc: &DXGI_OUTDUPL_DESC,
     codec: Codec,
     preset: EncoderPreset,
     tuning_info: TuningInfo,
-) -> (NvidiaEncoder<BUF_SIZE>, EncoderOutput<BUF_SIZE>) {
+) -> (NvidiaEncoder<N>, EncoderOutput<N>) {
     let mut device_context = None;
     unsafe {
         device.GetImmediateContext(&mut device_context);
     }
 
-    let buffer_texture = create_texture_buffer(&device, display_desc, BUF_SIZE).unwrap();
+    let buffer_texture = create_texture_buffer(&device, display_desc, N).unwrap();
 
     let (encoder, encoder_params) = NvidiaEncoderShared::new(
         &device,

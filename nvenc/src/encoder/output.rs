@@ -2,12 +2,12 @@ use super::NvidiaEncoderShared;
 use anyhow::Context;
 use std::{mem::MaybeUninit, sync::Arc};
 
-pub struct EncoderOutput<const BUF_SIZE: usize> {
-    shared: Arc<NvidiaEncoderShared<BUF_SIZE>>,
+pub struct EncoderOutput<const N: usize> {
+    shared: Arc<NvidiaEncoderShared<N>>,
 }
 
-impl<const BUF_SIZE: usize> EncoderOutput<BUF_SIZE> {
-    pub(crate) fn new(shared: Arc<NvidiaEncoderShared<BUF_SIZE>>) -> Self {
+impl<const N: usize> EncoderOutput<N> {
+    pub(crate) fn new(shared: Arc<NvidiaEncoderShared<N>>) -> Self {
         EncoderOutput { shared }
     }
 
