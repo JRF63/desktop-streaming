@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 nvenc-sys = { path = "../nvenc-sys" }
-spsc = { path = "../spsc" }
 thiserror = "1.0.31"
 anyhow = "1.0"
 

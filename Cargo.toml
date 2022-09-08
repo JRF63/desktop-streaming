@@ -1,2 +1,2 @@
 [workspace]
-members = ["nvenc", "nvenc-sys", "server-windows", "spsc"]
+members = ["nvenc", "nvenc-sys", "server-windows"]

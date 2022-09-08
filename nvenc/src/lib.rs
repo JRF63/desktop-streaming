@@ -1,7 +1,6 @@
 mod encoder;
 mod error;
 mod settings;
-mod sync;
 mod util;
 
 pub(crate) mod os;

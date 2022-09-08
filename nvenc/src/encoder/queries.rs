@@ -7,16 +7,14 @@ impl<const N: usize> NvidiaEncoder<N> {
     pub fn codecs(&self) -> Result<Vec<Codec>> {
         let mut tmp = MaybeUninit::uninit();
         let codec_guid_count = unsafe {
-            self.shared
-                .raw_encoder
-                .get_encode_guid_count(tmp.as_mut_ptr())?;
+            self.writer.get_encode_guid_count(tmp.as_mut_ptr())?;
             tmp.assume_init()
         };
 
         let mut codec_guids = Vec::with_capacity(codec_guid_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            self.shared.raw_encoder.get_encode_guids(
+            self.writer.get_encode_guids(
                 codec_guids.as_mut_ptr(),
                 codec_guid_count,
                 num_entries.as_mut_ptr(),
@@ -33,8 +31,7 @@ impl<const N: usize> NvidiaEncoder<N> {
         let codec = codec.into();
         let mut tmp = MaybeUninit::uninit();
         let profile_guid_count = unsafe {
-            self.shared
-                .raw_encoder
+            self.writer
                 .get_encode_profile_guid_count(codec, tmp.as_mut_ptr())?;
             tmp.assume_init()
         };
@@ -42,7 +39,7 @@ impl<const N: usize> NvidiaEncoder<N> {
         let mut profile_guids = Vec::with_capacity(profile_guid_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            self.shared.raw_encoder.get_encode_profile_guids(
+            self.writer.get_encode_profile_guids(
                 codec,
                 profile_guids.as_mut_ptr(),
                 profile_guid_count,
@@ -63,8 +60,7 @@ impl<const N: usize> NvidiaEncoder<N> {
         let codec = codec.into();
         let mut tmp = MaybeUninit::uninit();
         let input_format_count = unsafe {
-            self.shared
-                .raw_encoder
+            self.writer
                 .get_input_format_count(codec, tmp.as_mut_ptr())?;
             tmp.assume_init()
         };
@@ -72,7 +68,7 @@ impl<const N: usize> NvidiaEncoder<N> {
         let mut input_formats = Vec::with_capacity(input_format_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            self.shared.raw_encoder.get_input_formats(
+            self.writer.get_input_formats(
                 codec,
                 input_formats.as_mut_ptr(),
                 input_format_count,

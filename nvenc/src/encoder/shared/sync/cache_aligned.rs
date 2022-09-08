@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(align(128))]
-pub(crate) struct CacheAligned<T>(T);
+pub struct CacheAligned<T>(T);
 
 impl<T> Deref for CacheAligned<T> {
     type Target = T;

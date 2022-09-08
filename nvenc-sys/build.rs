@@ -8,6 +8,7 @@ fn main() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .layout_tests(false)
         .derive_debug(true)
+        .generate_comments(false)
         .default_enum_style(bindgen::EnumVariation::Rust { non_exhaustive: true })
         .rustified_enum("_NVENCSTATUS")
         .generate()

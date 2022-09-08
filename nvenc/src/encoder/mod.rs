@@ -7,10 +7,13 @@ mod raw;
 mod shared;
 
 use self::{
-    config::EncoderParams, output::EncoderOutput, raw::RawEncoder, shared::NvidiaEncoderShared,
+    config::EncoderParams,
+    output::EncoderOutput,
+    raw::RawEncoder,
+    shared::{encoder_channel, NvidiaEncoderReader, NvidiaEncoderWriter},
 };
 use crate::{Codec, EncoderPreset, Result, TuningInfo};
-use std::{mem::MaybeUninit, sync::Arc};
+use std::{mem::MaybeUninit, ops::Deref};
 
 use windows::{
     core::Interface,
@@ -23,7 +26,7 @@ use windows::{
 use crate::os::windows::create_texture_buffer;
 
 pub struct NvidiaEncoder<const N: usize> {
-    shared: Arc<NvidiaEncoderShared<N>>,
+    writer: NvidiaEncoderWriter<N>,
     device_context: ID3D11DeviceContext,
     buffer_texture: ID3D11Texture2D,
     encode_pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
@@ -38,7 +41,7 @@ impl<const N: usize> Drop for NvidiaEncoder<N> {
 
 impl<const N: usize> NvidiaEncoder<N> {
     pub(crate) fn new(
-        shared: Arc<NvidiaEncoderShared<N>>,
+        writer: NvidiaEncoderWriter<N>,
         device_context: ID3D11DeviceContext,
         buffer_texture: ID3D11Texture2D,
         encoder_params: EncoderParams,
@@ -72,7 +75,7 @@ impl<const N: usize> NvidiaEncoder<N> {
         println!("{:?}", unsafe { &c.encodeCodecConfig.h264Config });
 
         NvidiaEncoder {
-            shared,
+            writer,
             device_context,
             buffer_texture,
             encode_pic_params: pic_params,
@@ -99,8 +102,7 @@ impl<const N: usize> NvidiaEncoder<N> {
 
     pub(crate) fn reconfigure_params(&mut self) -> Result<()> {
         unsafe {
-            self.shared
-                .raw_encoder
+            self.writer
                 .reconfigure_encoder(self.encoder_params.reconfig_params_mut())?;
         }
 
@@ -127,8 +129,7 @@ impl<const N: usize> NvidiaEncoder<N> {
             sequence_param_payload.spsppsBuffer = buffer.as_mut_ptr().cast();
             sequence_param_payload.outSPSPPSPayloadSize = &mut bytes_written;
 
-            self.shared
-                .raw_encoder
+            self.writer
                 .get_sequence_params(&mut sequence_param_payload)?;
         }
         buffer.truncate(bytes_written as usize);
@@ -147,36 +148,25 @@ impl<const N: usize> NvidiaEncoder<N> {
         let pic_params = &mut self.encode_pic_params;
         let device_context = &self.device_context;
         let input_textures = &self.buffer_texture;
-        let raw_encoder = &self.shared.raw_encoder;
+        let raw_encoder: &RawEncoder = self.writer.deref();
 
-        self.shared
-            .buffer
-            .writer_access(frame, |index, buffer, frame| {
-                NvidiaEncoder::<N>::copy_input_frame(
-                    device_context,
-                    input_textures,
-                    frame,
-                    index,
-                );
-                post_copy_op();
+        self.writer.write(frame, |index, buffer, frame| {
+            NvidiaEncoder::<N>::copy_input_frame(device_context, input_textures, frame, index);
+            post_copy_op();
 
-                buffer.mapped_input = NvidiaEncoder::<N>::map_input(
-                    raw_encoder,
-                    buffer.registered_resource.as_ptr(),
-                )?;
-                pic_params.inputBuffer = buffer.mapped_input;
-                pic_params.outputBitstream = buffer.output_buffer.as_ptr();
-                pic_params.completionEvent = buffer.event_obj.as_ptr();
-                Ok(())
-            })?;
+            buffer.mapped_input =
+                NvidiaEncoder::<N>::map_input(raw_encoder, buffer.registered_resource.as_ptr())?;
+            pic_params.inputBuffer = buffer.mapped_input;
+            pic_params.outputBitstream = buffer.output_buffer.as_ptr();
+            pic_params.completionEvent = buffer.event_obj.as_ptr();
+            Ok(())
+        })?;
 
         // Used for invalidation of frames
         self.encode_pic_params.inputTimeStamp = timestamp;
 
         unsafe {
-            self.shared
-                .raw_encoder
-                .encode_picture(&mut self.encode_pic_params)?;
+            self.writer.encode_picture(&mut self.encode_pic_params)?;
         }
 
         Ok(())
@@ -238,7 +228,7 @@ pub fn create_encoder<const N: usize>(
 
     let buffer_texture = create_texture_buffer(&device, display_desc, N).unwrap();
 
-    let (encoder, encoder_params) = NvidiaEncoderShared::new(
+    let ((writer, reader), encoder_params) = encoder_channel(
         &device,
         display_desc,
         &buffer_texture,
@@ -247,16 +237,15 @@ pub fn create_encoder<const N: usize>(
         tuning_info,
     )
     .unwrap();
-    let encoder = Arc::new(encoder);
 
     let encoder_input = NvidiaEncoder::new(
-        encoder.clone(),
+        writer,
         device_context.unwrap(),
         buffer_texture,
         encoder_params,
     );
 
-    let encoder_output = EncoderOutput::new(encoder);
+    let encoder_output = EncoderOutput::new(reader);
 
     (encoder_input, encoder_output)
 }
