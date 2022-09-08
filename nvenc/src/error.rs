@@ -1,3 +1,4 @@
+// TODO: This should be a `NonZeroI32`
 #[repr(i32)]
 #[derive(thiserror::Error, Debug)]
 pub enum NvEncError {
@@ -73,7 +74,9 @@ pub enum NvEncError {
     MalformedFunctionList = 0x7fffffff - 5,
 
     #[error("Could not create a Windows event object")]
-    AsyncEventCreationFailed= 0x7fffffff - 20,
+    AsyncEventCreationFailed = 0x7fffffff - 20,
+    #[error("Error while waiting for the event object to be signaled")]
+    AsyncEventWaitError = 0x7fffffff - 21,
 }
 
 impl NvEncError {

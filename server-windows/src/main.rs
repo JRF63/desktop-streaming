@@ -67,17 +67,17 @@ fn main() {
                     lock.frameIdx, time_delta, lock.bitstreamSizeInBytes
                 );
 
-                // let mut file = File::create(format!("nvenc-windows/regex/nalus/{}.h264", i)).unwrap();
-                // i += 1;
+                let mut file = File::create(format!("nvenc/regex/nalus/{}.h264", i)).unwrap();
+                i += 1;
 
-                // let slice = unsafe {
-                //     std::slice::from_raw_parts(
-                //         lock.bitstreamBufferPtr as *const u8,
-                //         lock.bitstreamSizeInBytes as usize,
-                //     )
-                // };
+                let slice = unsafe {
+                    std::slice::from_raw_parts(
+                        lock.bitstreamBufferPtr as *const u8,
+                        lock.bitstreamSizeInBytes as usize,
+                    )
+                };
 
-                // file.write_all(slice).unwrap();
+                file.write_all(slice).unwrap();
             }) {}
         }
         let div = timer_frequency() as u64 / 1000000;
@@ -92,7 +92,7 @@ fn main() {
 
     {
         let csd = encoder.get_codec_specific_data().unwrap();
-        let mut file = File::create("nvenc-windows/regex/nalus/csd.bin").unwrap();
+        let mut file = File::create("nvenc/regex/nalus/csd.bin").unwrap();
         file.write_all(&csd).unwrap();
     }
 

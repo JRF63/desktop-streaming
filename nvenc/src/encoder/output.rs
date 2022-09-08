@@ -1,5 +1,5 @@
 use super::NvidiaEncoderReader;
-use anyhow::Context;
+use crate::{NvEncError, Result};
 use std::mem::MaybeUninit;
 
 pub struct EncoderOutput<const N: usize> {
@@ -14,11 +14,17 @@ impl<const N: usize> EncoderOutput<N> {
     pub fn wait_for_output<F: FnMut(&nvenc_sys::NV_ENC_LOCK_BITSTREAM) -> ()>(
         &self,
         mut consume_output: F,
-    ) -> anyhow::Result<()> {
-        const ERR_LABEL: &'static str = "EncoderOutput error";
+    ) -> Result<()> {
+        self.reader.read(|buffer| -> Result<()> {
+            buffer
+                .event_obj
+                .blocking_wait()
+                .map_err(|_| NvEncError::AsyncEventWaitError)?;
 
-        self.reader.read(|buffer| -> anyhow::Result<()> {
-            buffer.event_obj.blocking_wait().context(ERR_LABEL)?;
+            // End of input stream
+            if buffer.mapped_input.is_null() {
+                return Ok(());
+            }
 
             let mut lock_params: nvenc_sys::NV_ENC_LOCK_BITSTREAM =
                 unsafe { MaybeUninit::zeroed().assume_init() };

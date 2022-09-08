@@ -1,0 +1,3 @@
+[submodule "nvenc-sys"]
+	path = nvenc-sys
+	url = https://github.com/JRF63/nvenc-sys.git

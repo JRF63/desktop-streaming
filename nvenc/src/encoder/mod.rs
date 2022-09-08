@@ -83,23 +83,6 @@ impl<const N: usize> NvidiaEncoder<N> {
         }
     }
 
-    pub fn end_encode(&mut self) -> Result<()> {
-        // let mut eos_pic_params: nvenc_sys::NV_ENC_PIC_PARAMS =
-        //     unsafe { MaybeUninit::zeroed().assume_init() };
-        // eos_pic_params.version = nvenc_sys::NV_ENC_PIC_PARAMS_VER;
-        // eos_pic_params.encodePicFlags = nvenc_sys::NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_EOS as u32;
-        // // eos_pic_params.completionEvent = todo!();
-
-        // unsafe {
-        //     nvenc_function!(
-        //         self.shared.functions.nvEncEncodePicture,
-        //         self.shared.raw_encoder.as_ptr(),
-        //         &mut eos_pic_params
-        //     );
-        // }
-        Ok(())
-    }
-
     pub(crate) fn reconfigure_params(&mut self) -> Result<()> {
         unsafe {
             self.writer
@@ -172,6 +155,24 @@ impl<const N: usize> NvidiaEncoder<N> {
         Ok(())
     }
 
+    fn end_encode(&mut self) -> Result<()> {
+        let pic_params = &mut self.encode_pic_params;
+
+        self.writer.write((), |_, buffer, ()| {
+            pic_params.inputBuffer = std::ptr::null_mut();
+            pic_params.outputBitstream = std::ptr::null_mut();
+            pic_params.completionEvent = buffer.event_obj.as_ptr();
+            pic_params.encodePicFlags = nvenc_sys::NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_EOS as u32;
+            Ok(())
+        })?;
+
+        unsafe {
+            self.writer.encode_picture(&mut self.encode_pic_params)?;
+        }
+
+        Ok(())
+    }
+
     /// Copies the passed resource to the internal texture buffer.
     fn copy_input_frame(
         device_context: &ID3D11DeviceContext,
@@ -197,7 +198,6 @@ impl<const N: usize> NvidiaEncoder<N> {
 
     /// Does not seem to function as a sync barrier. Texture copy only syncs on call to
     /// `nvEncEncodePicture` if async encode is enabled.
-    #[inline]
     fn map_input(
         raw_encoder: &RawEncoder,
         registered_resource: nvenc_sys::NV_ENC_REGISTERED_PTR,

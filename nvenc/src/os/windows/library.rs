@@ -72,13 +72,13 @@ impl WindowsLibrary {
 
     /// Checks if the library is signed. This is different from passing the
     /// `LOAD_LIBRARY_REQUIRE_SIGNED_TARGET` flag to `LoadLibraryExA`.
+    // Translated into Rust from:
+    // https://docs.microsoft.com/en-us/windows/win32/seccrypto/example-c-program--verifying-the-signature-of-a-pe-file
     pub(crate) fn is_library_signed(filename: &str) -> bool {
         let mut path = get_system32_dir();
         path.push('\\');
         path.push_str(filename);
 
-        // Translated into Rust from:
-        // https://docs.microsoft.com/en-us/windows/win32/seccrypto/example-c-program--verifying-the-signature-of-a-pe-file
         let mut wintrust_action_generic_verify_v2 =
             GUID::from_u128(0x00AAC56B_CD44_11d0_8CC2_00C04FC295EE);
 
