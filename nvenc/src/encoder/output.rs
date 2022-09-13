@@ -11,7 +11,7 @@ impl<const N: usize> EncoderOutput<N> {
         EncoderOutput { reader }
     }
 
-    pub fn wait_for_output<F: FnMut(&nvenc_sys::NV_ENC_LOCK_BITSTREAM) -> ()>(
+    pub fn wait_for_output<F: FnMut(&crate::sys::NV_ENC_LOCK_BITSTREAM) -> ()>(
         &self,
         mut consume_output: F,
     ) -> Result<()> {
@@ -26,9 +26,9 @@ impl<const N: usize> EncoderOutput<N> {
                 return Ok(());
             }
 
-            let mut lock_params: nvenc_sys::NV_ENC_LOCK_BITSTREAM =
+            let mut lock_params: crate::sys::NV_ENC_LOCK_BITSTREAM =
                 unsafe { MaybeUninit::zeroed().assume_init() };
-            lock_params.version = nvenc_sys::NV_ENC_LOCK_BITSTREAM_VER;
+            lock_params.version = crate::sys::NV_ENC_LOCK_BITSTREAM_VER;
             lock_params.outputBitstream = buffer.output_buffer.as_ptr();
 
             unsafe {

@@ -56,7 +56,7 @@ impl<const N: usize> NvidiaEncoder<N> {
     pub fn supported_input_formats(
         &self,
         codec: Codec,
-    ) -> Result<Vec<nvenc_sys::NV_ENC_BUFFER_FORMAT>> {
+    ) -> Result<Vec<crate::sys::NV_ENC_BUFFER_FORMAT>> {
         let codec = codec.into();
         let mut tmp = MaybeUninit::uninit();
         let input_format_count = unsafe {

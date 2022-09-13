@@ -27,7 +27,7 @@ impl NvidiaEncoderLibrary {
 
     pub(crate) fn get_max_supported_version(&self) -> Result<u32> {
         const FN_NAME: &'static str = "NvEncodeAPIGetMaxSupportedVersion";
-        type GetMaxSupportedVersion = unsafe extern "C" fn(*mut u32) -> nvenc_sys::NVENCSTATUS;
+        type GetMaxSupportedVersion = unsafe extern "C" fn(*mut u32) -> crate::sys::NVENCSTATUS;
 
         let get_max_supported_version: GetMaxSupportedVersion = unsafe {
             let tmp = self
@@ -45,11 +45,11 @@ impl NvidiaEncoderLibrary {
         }
     }
 
-    pub(crate) fn create_instance(&self) -> Result<nvenc_sys::NV_ENCODE_API_FUNCTION_LIST> {
+    pub(crate) fn create_instance(&self) -> Result<crate::sys::NV_ENCODE_API_FUNCTION_LIST> {
         const FN_NAME: &'static str = "NvEncodeAPICreateInstance";
         type CreateInstance = unsafe extern "C" fn(
-            *mut nvenc_sys::NV_ENCODE_API_FUNCTION_LIST,
-        ) -> nvenc_sys::NVENCSTATUS;
+            *mut crate::sys::NV_ENCODE_API_FUNCTION_LIST,
+        ) -> crate::sys::NVENCSTATUS;
 
         let create_instance: CreateInstance = unsafe {
             let tmp = self
@@ -60,10 +60,10 @@ impl NvidiaEncoderLibrary {
         };
 
         unsafe {
-            let mut fn_list: nvenc_sys::NV_ENCODE_API_FUNCTION_LIST =
+            let mut fn_list: crate::sys::NV_ENCODE_API_FUNCTION_LIST =
                 MaybeUninit::zeroed().assume_init();
             // The version needs to be set or the API will return an error
-            fn_list.version = nvenc_sys::NV_ENCODE_API_FUNCTION_LIST_VER;
+            fn_list.version = crate::sys::NV_ENCODE_API_FUNCTION_LIST_VER;
             let status = create_instance(&mut fn_list);
             match NvEncError::from_nvenc_status(status) {
                 Some(err) => Err(err),

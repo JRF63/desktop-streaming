@@ -14,7 +14,7 @@ use crate::os::windows::EventObject;
 
 pub(crate) struct NvidiaEncoderBufferItems {
     pub(crate) registered_resource: NonNull<c_void>,
-    pub(crate) mapped_input: nvenc_sys::NV_ENC_INPUT_PTR,
+    pub(crate) mapped_input: crate::sys::NV_ENC_INPUT_PTR,
     pub(crate) output_buffer: NonNull<c_void>,
     pub(crate) event_obj: EventObject,
 }
@@ -97,8 +97,8 @@ where
     T: NvEncTexture,
 {
     let (width, height, format) = buffer_texture.desc();
-    let mut register_resource_params = nvenc_sys::NV_ENC_REGISTER_RESOURCE {
-        version: nvenc_sys::NV_ENC_REGISTER_RESOURCE_VER,
+    let mut register_resource_params = crate::sys::NV_ENC_REGISTER_RESOURCE {
+        version: crate::sys::NV_ENC_REGISTER_RESOURCE_VER,
         resourceType: T::resource_type(),
         width,
         height,
@@ -107,7 +107,7 @@ where
         resourceToRegister: buffer_texture.as_ptr(),
         registeredResource: std::ptr::null_mut(),
         bufferFormat: format.into_nvenc_buffer_format(),
-        bufferUsage: nvenc_sys::NV_ENC_BUFFER_USAGE::NV_ENC_INPUT_IMAGE,
+        bufferUsage: crate::sys::NV_ENC_BUFFER_USAGE::NV_ENC_INPUT_IMAGE,
         pInputFencePoint: std::ptr::null_mut(),
         pOutputFencePoint: std::ptr::null_mut(),
         reserved1: [0; 247],
@@ -144,9 +144,9 @@ impl<'a> Drop for OutputBufferRAII<'a> {
 
 /// Allocate an output buffer. Should be called only after the encoder has been configured.
 fn create_output_buffer<'a>(raw_encoder: &'a RawEncoder) -> Result<OutputBufferRAII<'a>> {
-    let mut create_bitstream_buffer_params: nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER =
+    let mut create_bitstream_buffer_params: crate::sys::NV_ENC_CREATE_BITSTREAM_BUFFER =
         unsafe { MaybeUninit::zeroed().assume_init() };
-    create_bitstream_buffer_params.version = nvenc_sys::NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
+    create_bitstream_buffer_params.version = crate::sys::NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
 
     unsafe {
         raw_encoder.create_bitstream_buffer(&mut create_bitstream_buffer_params)?;
@@ -178,8 +178,8 @@ fn register_async_event<'a, 'b>(
 ) -> Result<AsyncEventRAII<'a, 'b>> {
     #[cfg(windows)]
     unsafe {
-        let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
-        event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
+        let mut event_params: crate::sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
+        event_params.version = crate::sys::NV_ENC_EVENT_PARAMS_VER;
         event_params.completionEvent = event_obj.as_ptr();
         raw_encoder.register_async_event(&mut event_params)?;
     }
@@ -192,8 +192,8 @@ fn register_async_event<'a, 'b>(
 fn unregister_async_event(raw_encoder: &RawEncoder, event_obj: &EventObject) -> Result<()> {
     #[cfg(windows)]
     unsafe {
-        let mut event_params: nvenc_sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
-        event_params.version = nvenc_sys::NV_ENC_EVENT_PARAMS_VER;
+        let mut event_params: crate::sys::NV_ENC_EVENT_PARAMS = MaybeUninit::zeroed().assume_init();
+        event_params.version = crate::sys::NV_ENC_EVENT_PARAMS_VER;
         event_params.completionEvent = event_obj.as_ptr();
         raw_encoder.unregister_async_event(&mut event_params)?;
     }

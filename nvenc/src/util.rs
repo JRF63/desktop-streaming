@@ -1,11 +1,11 @@
 use std::os::raw::c_void;
 
 pub(crate) trait IntoNvEncBufferFormat {
-    fn into_nvenc_buffer_format(&self) -> nvenc_sys::NV_ENC_BUFFER_FORMAT;
+    fn into_nvenc_buffer_format(&self) -> crate::sys::NV_ENC_BUFFER_FORMAT;
 }
 
 pub(crate) trait NvEncDevice {
-    fn device_type() -> nvenc_sys::NV_ENC_DEVICE_TYPE;
+    fn device_type() -> crate::sys::NV_ENC_DEVICE_TYPE;
 
     fn as_ptr(&self) -> *mut c_void;
 }
@@ -13,7 +13,7 @@ pub(crate) trait NvEncDevice {
 pub(crate) trait NvEncTexture {
     type Format: IntoNvEncBufferFormat;
 
-    fn resource_type() -> nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE;
+    fn resource_type() -> crate::sys::NV_ENC_INPUT_RESOURCE_TYPE;
 
     /// Returns (width, height, texture_format)
     fn desc(&self) -> (u32, u32, Self::Format);

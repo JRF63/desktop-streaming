@@ -8,8 +8,8 @@ pub enum Codec {
     Hevc,
 }
 
-impl Into<nvenc_sys::GUID> for Codec {
-    fn into(self) -> nvenc_sys::GUID {
+impl Into<crate::sys::GUID> for Codec {
+    fn into(self) -> crate::sys::GUID {
         match self {
             Codec::H264 => NV_ENC_CODEC_H264_GUID,
             Codec::Hevc => NV_ENC_CODEC_HEVC_GUID,
@@ -17,8 +17,8 @@ impl Into<nvenc_sys::GUID> for Codec {
     }
 }
 
-impl From<nvenc_sys::GUID> for Codec {
-    fn from(guid: nvenc_sys::GUID) -> Self {
+impl From<crate::sys::GUID> for Codec {
+    fn from(guid: crate::sys::GUID) -> Self {
         if guid == NV_ENC_CODEC_H264_GUID {
             Codec::H264
         } else if guid == NV_ENC_CODEC_HEVC_GUID {
@@ -44,8 +44,8 @@ pub enum CodecProfile {
     HevcFrext,
 }
 
-impl Into<nvenc_sys::GUID> for CodecProfile {
-    fn into(self) -> nvenc_sys::GUID {
+impl Into<crate::sys::GUID> for CodecProfile {
+    fn into(self) -> crate::sys::GUID {
         match self {
             CodecProfile::Autoselect => NV_ENC_CODEC_PROFILE_AUTOSELECT_GUID,
             CodecProfile::H264Baseline => NV_ENC_H264_PROFILE_BASELINE_GUID,
@@ -62,8 +62,8 @@ impl Into<nvenc_sys::GUID> for CodecProfile {
     }
 }
 
-impl From<nvenc_sys::GUID> for CodecProfile {
-    fn from(guid: nvenc_sys::GUID) -> Self {
+impl From<crate::sys::GUID> for CodecProfile {
+    fn from(guid: crate::sys::GUID) -> Self {
         if guid == NV_ENC_CODEC_PROFILE_AUTOSELECT_GUID {
             CodecProfile::Autoselect
         } else if guid == NV_ENC_H264_PROFILE_BASELINE_GUID {
@@ -103,8 +103,8 @@ pub enum EncoderPreset {
     P7,
 }
 
-impl Into<nvenc_sys::GUID> for EncoderPreset {
-    fn into(self) -> nvenc_sys::GUID {
+impl Into<crate::sys::GUID> for EncoderPreset {
+    fn into(self) -> crate::sys::GUID {
         match self {
             EncoderPreset::P1 => NV_ENC_PRESET_P1_GUID,
             EncoderPreset::P2 => NV_ENC_PRESET_P2_GUID,
@@ -117,8 +117,8 @@ impl Into<nvenc_sys::GUID> for EncoderPreset {
     }
 }
 
-impl From<nvenc_sys::GUID> for EncoderPreset {
-    fn from(guid: nvenc_sys::GUID) -> Self {
+impl From<crate::sys::GUID> for EncoderPreset {
+    fn from(guid: crate::sys::GUID) -> Self {
         if guid == NV_ENC_PRESET_P1_GUID {
             EncoderPreset::P1
         } else if guid == NV_ENC_PRESET_P2_GUID {
@@ -148,34 +148,34 @@ pub enum TuningInfo {
     Lossless,
 }
 
-impl Into<nvenc_sys::NV_ENC_TUNING_INFO> for TuningInfo {
-    fn into(self) -> nvenc_sys::NV_ENC_TUNING_INFO {
+impl Into<crate::sys::NV_ENC_TUNING_INFO> for TuningInfo {
+    fn into(self) -> crate::sys::NV_ENC_TUNING_INFO {
         match self {
-            TuningInfo::Undefined => nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_UNDEFINED,
+            TuningInfo::Undefined => crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_UNDEFINED,
             TuningInfo::HighQuality => {
-                nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY
+                crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY
             }
-            TuningInfo::LowLatency => nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY,
+            TuningInfo::LowLatency => crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY,
             TuningInfo::UltraLowLatency => {
-                nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY
+                crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY
             }
-            TuningInfo::Lossless => nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOSSLESS,
+            TuningInfo::Lossless => crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOSSLESS,
         }
     }
 }
 
-impl From<nvenc_sys::NV_ENC_TUNING_INFO> for TuningInfo {
-    fn from(tuning_info: nvenc_sys::NV_ENC_TUNING_INFO) -> Self {
+impl From<crate::sys::NV_ENC_TUNING_INFO> for TuningInfo {
+    fn from(tuning_info: crate::sys::NV_ENC_TUNING_INFO) -> Self {
         match tuning_info {
-            nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_UNDEFINED => TuningInfo::Undefined,
-            nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY => {
+            crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_UNDEFINED => TuningInfo::Undefined,
+            crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY => {
                 TuningInfo::HighQuality
             }
-            nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY => TuningInfo::LowLatency,
-            nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY => {
+            crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY => TuningInfo::LowLatency,
+            crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY => {
                 TuningInfo::UltraLowLatency
             }
-            nvenc_sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOSSLESS => TuningInfo::Lossless,
+            crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOSSLESS => TuningInfo::Lossless,
             _ => panic!("Invalid tuning info."),
         }
     }

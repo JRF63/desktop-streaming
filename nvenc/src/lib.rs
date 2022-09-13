@@ -1,6 +1,7 @@
 mod encoder;
 mod error;
 mod settings;
+mod sys;
 mod util;
 
 pub(crate) mod os;

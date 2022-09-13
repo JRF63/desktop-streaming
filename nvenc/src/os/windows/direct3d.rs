@@ -8,8 +8,8 @@ use windows::Win32::Graphics::{
 };
 
 impl crate::util::NvEncDevice for ID3D11Device {
-    fn device_type() -> nvenc_sys::NV_ENC_DEVICE_TYPE {
-        nvenc_sys::NV_ENC_DEVICE_TYPE::NV_ENC_DEVICE_TYPE_DIRECTX
+    fn device_type() -> crate::sys::NV_ENC_DEVICE_TYPE {
+        crate::sys::NV_ENC_DEVICE_TYPE::NV_ENC_DEVICE_TYPE_DIRECTX
     }
 
     fn as_ptr(&self) -> *mut std::os::raw::c_void {
@@ -20,8 +20,8 @@ impl crate::util::NvEncDevice for ID3D11Device {
 impl crate::util::NvEncTexture for ID3D11Texture2D {
     type Format = DXGI_FORMAT;
 
-    fn resource_type() -> nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE {
-        nvenc_sys::NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX
+    fn resource_type() -> crate::sys::NV_ENC_INPUT_RESOURCE_TYPE {
+        crate::sys::NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX
     }
 
     fn as_ptr(&self) -> *mut std::os::raw::c_void {

@@ -6,7 +6,7 @@ use std::mem::MaybeUninit;
 use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_DESC;
 
 #[repr(transparent)]
-pub(crate) struct EncoderParams(nvenc_sys::NV_ENC_RECONFIGURE_PARAMS);
+pub(crate) struct EncoderParams(crate::sys::NV_ENC_RECONFIGURE_PARAMS);
 
 impl Drop for EncoderParams {
     fn drop(&mut self) {
@@ -23,12 +23,12 @@ impl EncoderParams {
         preset: EncoderPreset,
         tuning_info: TuningInfo,
     ) -> Result<Self> {
-        let mut reconfig_params: nvenc_sys::NV_ENC_RECONFIGURE_PARAMS =
+        let mut reconfig_params: crate::sys::NV_ENC_RECONFIGURE_PARAMS =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        reconfig_params.version = nvenc_sys::NV_ENC_RECONFIGURE_PARAMS_VER;
+        reconfig_params.version = crate::sys::NV_ENC_RECONFIGURE_PARAMS_VER;
 
         let init_params = &mut reconfig_params.reInitEncodeParams;
-        init_params.version = nvenc_sys::NV_ENC_INITIALIZE_PARAMS_VER;
+        init_params.version = crate::sys::NV_ENC_INITIALIZE_PARAMS_VER;
         init_params.encodeGUID = codec.into();
         init_params.presetGUID = preset.into();
         init_params.encodeWidth = display_desc.ModeDesc.Width;
@@ -66,16 +66,16 @@ impl EncoderParams {
         codec: Codec,
         preset: EncoderPreset,
         tuning_info: TuningInfo,
-    ) -> Result<Box<nvenc_sys::NV_ENC_CONFIG>> {
+    ) -> Result<Box<crate::sys::NV_ENC_CONFIG>> {
         let encode_guid = codec.into();
         let preset_guid = preset.into();
         let mut preset_config_params = unsafe {
-            let mut tmp: MaybeUninit<nvenc_sys::NV_ENC_PRESET_CONFIG> = MaybeUninit::zeroed();
+            let mut tmp: MaybeUninit<crate::sys::NV_ENC_PRESET_CONFIG> = MaybeUninit::zeroed();
             let mut_ref = &mut *tmp.as_mut_ptr();
 
-            mut_ref.version = nvenc_sys::NV_ENC_PRESET_CONFIG_VER;
-            mut_ref.presetCfg.version = nvenc_sys::NV_ENC_CONFIG_VER;
-            // mut_ref.presetCfg.rcParams.version = nvenc_sys::NV_ENC_RC_PARAMS_VER;
+            mut_ref.version = crate::sys::NV_ENC_PRESET_CONFIG_VER;
+            mut_ref.presetCfg.version = crate::sys::NV_ENC_CONFIG_VER;
+            // mut_ref.presetCfg.rcParams.version = crate::sys::NV_ENC_RC_PARAMS_VER;
 
             raw_encoder.get_encode_preset_config_ex(
                 encode_guid,
@@ -130,27 +130,27 @@ impl EncoderParams {
         Ok(Box::new(preset_config_params.presetCfg))
     }
 
-    pub(crate) fn encode_config(&self) -> &nvenc_sys::NV_ENC_CONFIG {
+    pub(crate) fn encode_config(&self) -> &crate::sys::NV_ENC_CONFIG {
         unsafe { &*self.init_params().encodeConfig }
     }
 
-    pub(crate) fn encode_config_mut(&mut self) -> &mut nvenc_sys::NV_ENC_CONFIG {
+    pub(crate) fn encode_config_mut(&mut self) -> &mut crate::sys::NV_ENC_CONFIG {
         unsafe { &mut *self.init_params_mut().encodeConfig }
     }
 
-    pub(crate) fn init_params(&self) -> &nvenc_sys::NV_ENC_INITIALIZE_PARAMS {
+    pub(crate) fn init_params(&self) -> &crate::sys::NV_ENC_INITIALIZE_PARAMS {
         &self.0.reInitEncodeParams
     }
 
-    pub(crate) fn init_params_mut(&mut self) -> &mut nvenc_sys::NV_ENC_INITIALIZE_PARAMS {
+    pub(crate) fn init_params_mut(&mut self) -> &mut crate::sys::NV_ENC_INITIALIZE_PARAMS {
         &mut self.0.reInitEncodeParams
     }
 
-    pub(crate) fn reconfig_params(&self) -> &nvenc_sys::NV_ENC_RECONFIGURE_PARAMS {
+    pub(crate) fn reconfig_params(&self) -> &crate::sys::NV_ENC_RECONFIGURE_PARAMS {
         &self.0
     }
 
-    pub(crate) fn reconfig_params_mut(&mut self) -> &mut nvenc_sys::NV_ENC_RECONFIGURE_PARAMS {
+    pub(crate) fn reconfig_params_mut(&mut self) -> &mut crate::sys::NV_ENC_RECONFIGURE_PARAMS {
         &mut self.0
     }
 }

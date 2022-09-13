@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nvenc-sys = { path = "../nvenc-sys" }
+nvenc-sys = { path = "../nvenc-sys", features = ["v11_1"] }
 thiserror = "1.0.31"
 
 [dependencies.windows]

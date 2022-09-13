@@ -29,7 +29,7 @@ pub struct NvidiaEncoder<const N: usize> {
     writer: NvidiaEncoderWriter<N>,
     device_context: ID3D11DeviceContext,
     buffer_texture: ID3D11Texture2D,
-    encode_pic_params: nvenc_sys::NV_ENC_PIC_PARAMS,
+    encode_pic_params: crate::sys::NV_ENC_PIC_PARAMS,
     encoder_params: EncoderParams,
 }
 
@@ -47,14 +47,14 @@ impl<const N: usize> NvidiaEncoder<N> {
         encoder_params: EncoderParams,
     ) -> Self {
         let pic_params = {
-            let mut tmp: nvenc_sys::NV_ENC_PIC_PARAMS =
+            let mut tmp: crate::sys::NV_ENC_PIC_PARAMS =
                 unsafe { MaybeUninit::zeroed().assume_init() };
-            tmp.version = nvenc_sys::NV_ENC_PIC_PARAMS_VER;
+            tmp.version = crate::sys::NV_ENC_PIC_PARAMS_VER;
             tmp.inputWidth = encoder_params.init_params().encodeWidth;
             tmp.inputHeight = encoder_params.init_params().encodeHeight;
             tmp.inputPitch = tmp.inputWidth;
             tmp.bufferFmt = encoder_params.init_params().bufferFormat;
-            tmp.pictureStruct = nvenc_sys::NV_ENC_PIC_STRUCT::NV_ENC_PIC_STRUCT_FRAME;
+            tmp.pictureStruct = crate::sys::NV_ENC_PIC_STRUCT::NV_ENC_PIC_STRUCT_FRAME;
             tmp
         };
 
@@ -105,9 +105,9 @@ impl<const N: usize> NvidiaEncoder<N> {
         let mut buffer = vec![0; 1024];
         let mut bytes_written = 0;
         unsafe {
-            let mut sequence_param_payload: nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD =
+            let mut sequence_param_payload: crate::sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD =
                 MaybeUninit::zeroed().assume_init();
-            sequence_param_payload.version = nvenc_sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;
+            sequence_param_payload.version = crate::sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD_VER;
             sequence_param_payload.inBufferSize = buffer.len() as u32;
             sequence_param_payload.spsppsBuffer = buffer.as_mut_ptr().cast();
             sequence_param_payload.outSPSPPSPayloadSize = &mut bytes_written;
@@ -156,13 +156,14 @@ impl<const N: usize> NvidiaEncoder<N> {
     }
 
     fn end_encode(&mut self) -> Result<()> {
+        // TODO: Signal EOS to the output via an AtomicBool or something
         let pic_params = &mut self.encode_pic_params;
 
         self.writer.write((), |_, buffer, ()| {
             pic_params.inputBuffer = std::ptr::null_mut();
             pic_params.outputBitstream = std::ptr::null_mut();
             pic_params.completionEvent = buffer.event_obj.as_ptr();
-            pic_params.encodePicFlags = nvenc_sys::NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_EOS as u32;
+            pic_params.encodePicFlags = crate::sys::NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_EOS as u32;
             Ok(())
         })?;
 
@@ -200,11 +201,11 @@ impl<const N: usize> NvidiaEncoder<N> {
     /// `nvEncEncodePicture` if async encode is enabled.
     fn map_input(
         raw_encoder: &RawEncoder,
-        registered_resource: nvenc_sys::NV_ENC_REGISTERED_PTR,
-    ) -> Result<nvenc_sys::NV_ENC_INPUT_PTR> {
-        let mut map_input_resource_params: nvenc_sys::NV_ENC_MAP_INPUT_RESOURCE =
+        registered_resource: crate::sys::NV_ENC_REGISTERED_PTR,
+    ) -> Result<crate::sys::NV_ENC_INPUT_PTR> {
+        let mut map_input_resource_params: crate::sys::NV_ENC_MAP_INPUT_RESOURCE =
             unsafe { MaybeUninit::zeroed().assume_init() };
-        map_input_resource_params.version = nvenc_sys::NV_ENC_MAP_INPUT_RESOURCE_VER;
+        map_input_resource_params.version = crate::sys::NV_ENC_MAP_INPUT_RESOURCE_VER;
         map_input_resource_params.registeredResource = registered_resource;
 
         unsafe {

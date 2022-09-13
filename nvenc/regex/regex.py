@@ -33,7 +33,7 @@ def qualify_type(typ):
         return typ
     else:
         s = typ.split()
-        s[-1] = f'nvenc_sys::{s[-1]}'
+        s[-1] = f'crate::sys::{s[-1]}'
         return ' '.join(s)
 
 mapping = build_mapping()

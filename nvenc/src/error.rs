@@ -1,9 +1,7 @@
-// TODO: This should be a `NonZeroI32`
 #[repr(i32)]
 #[derive(thiserror::Error, Debug)]
 pub enum NvEncError {
     // NvENC API errors
-    // TODO: Get these from `NvEncGetLastErrorString` instead?
     #[error("No encode capable devices were detected.")]
     NoEncodeDevice = 1,
     #[error("Devices pass by the client is not supported.")]
@@ -80,9 +78,9 @@ pub enum NvEncError {
 }
 
 impl NvEncError {
-    pub(crate) fn from_nvenc_status(status: nvenc_sys::NVENCSTATUS) -> Option<Self> {
+    pub(crate) fn from_nvenc_status(status: crate::sys::NVENCSTATUS) -> Option<Self> {
         match status {
-            nvenc_sys::NVENCSTATUS::NV_ENC_SUCCESS => None,
+            crate::sys::NVENCSTATUS::NV_ENC_SUCCESS => None,
             status => {
                 let err: NvEncError = unsafe { std::mem::transmute(status) };
                 Some(err)
