@@ -24,7 +24,7 @@ use windows::{
 /// RAII wrapper for a Windows library HANDLE.
 // NOTE: This is a `Send` since a `HANDLE` is `Send`
 #[repr(transparent)]
-pub(crate) struct WindowsLibrary(NonZeroIsize);
+pub struct WindowsLibrary(NonZeroIsize);
 
 impl Drop for WindowsLibrary {
     fn drop(&mut self) {
@@ -37,7 +37,7 @@ impl Drop for WindowsLibrary {
 
 impl WindowsLibrary {
     /// Open a .dll from C:\Windows\System32 without verification if it's signed
-    pub(crate) fn load(lib_name: &str) -> windows::core::Result<Self> {
+    pub fn load(lib_name: &str) -> windows::core::Result<Self> {
         let lib_name = CString::new(lib_name).unwrap();
 
         let lib = unsafe {
@@ -59,7 +59,7 @@ impl WindowsLibrary {
 
     /// Extracts the function pointer from the library. The returned function pointer is bound to
     /// the lifetime `&self`.
-    pub(crate) unsafe fn fn_ptr(
+    pub unsafe fn fn_ptr(
         &self,
         fn_name: &str,
     ) -> windows::core::Result<unsafe extern "system" fn() -> isize> {
@@ -74,7 +74,7 @@ impl WindowsLibrary {
     /// `LOAD_LIBRARY_REQUIRE_SIGNED_TARGET` flag to `LoadLibraryExA`.
     // Translated into Rust from:
     // https://docs.microsoft.com/en-us/windows/win32/seccrypto/example-c-program--verifying-the-signature-of-a-pe-file
-    pub(crate) fn is_library_signed(filename: &str) -> bool {
+    pub fn is_library_signed(filename: &str) -> bool {
         let mut path = get_system32_dir();
         path.push('\\');
         path.push_str(filename);

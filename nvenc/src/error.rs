@@ -78,7 +78,7 @@ pub enum NvEncError {
 }
 
 impl NvEncError {
-    pub(crate) fn from_nvenc_status(status: crate::sys::NVENCSTATUS) -> Option<Self> {
+    pub fn from_nvenc_status(status: crate::sys::NVENCSTATUS) -> Option<Self> {
         match status {
             crate::sys::NVENCSTATUS::NV_ENC_SUCCESS => None,
             status => {

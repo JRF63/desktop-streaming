@@ -4,7 +4,7 @@ mod settings;
 mod sys;
 mod util;
 
-pub(crate) mod os;
+pub mod os;
 
 pub type Result<T> = std::result::Result<T, NvEncError>;
 

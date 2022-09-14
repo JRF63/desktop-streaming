@@ -43,7 +43,7 @@ impl crate::util::NvEncTexture for ID3D11Texture2D {
 }
 
 /// Creates an `ID3D11Texture2D` where the duplicated frames can be copied to.
-pub(crate) fn create_texture_buffer(
+pub fn create_texture_buffer(
     device: &ID3D11Device,
     display_desc: &DXGI_OUTDUPL_DESC,
     buf_size: usize,

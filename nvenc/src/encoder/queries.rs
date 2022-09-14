@@ -2,7 +2,7 @@ use super::{NvidiaEncoder, Result};
 use crate::{Codec, CodecProfile};
 use std::mem::MaybeUninit;
 
-impl<const N: usize> NvidiaEncoder<N> {
+impl NvidiaEncoder {
     /// List all supported codecs (H.264, HEVC, etc.).
     pub fn codecs(&self) -> Result<Vec<Codec>> {
         let mut tmp = MaybeUninit::uninit();

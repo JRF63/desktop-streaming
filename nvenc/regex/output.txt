@@ -1,5 +1,5 @@
 #[inline(always)]
-pub(crate) unsafe fn get_encode_guid_count(
+pub unsafe fn get_encode_guid_count(
     &self,
     encode_guid_count: *mut u32,
 ) -> Result<()> {
@@ -13,7 +13,7 @@ pub(crate) unsafe fn get_encode_guid_count(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_guids(
+pub unsafe fn get_encode_guids(
     &self,
     guids: *mut crate::sys::GUID,
     guid_array_size: u32,
@@ -31,7 +31,7 @@ pub(crate) unsafe fn get_encode_guids(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_profile_guid_count(
+pub unsafe fn get_encode_profile_guid_count(
     &self,
     encode_guid: crate::sys::GUID,
     encode_profile_guid_count: *mut u32,
@@ -47,7 +47,7 @@ pub(crate) unsafe fn get_encode_profile_guid_count(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_profile_guids(
+pub unsafe fn get_encode_profile_guids(
     &self,
     encode_guid: crate::sys::GUID,
     profile_guids: *mut crate::sys::GUID,
@@ -67,7 +67,7 @@ pub(crate) unsafe fn get_encode_profile_guids(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_input_format_count(
+pub unsafe fn get_input_format_count(
     &self,
     encode_guid: crate::sys::GUID,
     input_fmt_count: *mut u32,
@@ -83,7 +83,7 @@ pub(crate) unsafe fn get_input_format_count(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_input_formats(
+pub unsafe fn get_input_formats(
     &self,
     encode_guid: crate::sys::GUID,
     input_fmts: *mut crate::sys::NV_ENC_BUFFER_FORMAT,
@@ -103,7 +103,7 @@ pub(crate) unsafe fn get_input_formats(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_caps(
+pub unsafe fn get_encode_caps(
     &self,
     encode_guid: crate::sys::GUID,
     caps_param: *mut crate::sys::NV_ENC_CAPS_PARAM,
@@ -121,7 +121,7 @@ pub(crate) unsafe fn get_encode_caps(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_preset_count(
+pub unsafe fn get_encode_preset_count(
     &self,
     encode_guid: crate::sys::GUID,
     encode_preset_guid_count: *mut u32,
@@ -137,7 +137,7 @@ pub(crate) unsafe fn get_encode_preset_count(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_preset_guids(
+pub unsafe fn get_encode_preset_guids(
     &self,
     encode_guid: crate::sys::GUID,
     preset_guids: *mut crate::sys::GUID,
@@ -157,7 +157,7 @@ pub(crate) unsafe fn get_encode_preset_guids(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_preset_config(
+pub unsafe fn get_encode_preset_config(
     &self,
     encode_guid: crate::sys::GUID,
     preset_guid: crate::sys::GUID,
@@ -175,7 +175,7 @@ pub(crate) unsafe fn get_encode_preset_config(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_preset_config_ex(
+pub unsafe fn get_encode_preset_config_ex(
     &self,
     encode_guid: crate::sys::GUID,
     preset_guid: crate::sys::GUID,
@@ -195,7 +195,7 @@ pub(crate) unsafe fn get_encode_preset_config_ex(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn initialize_encoder(
+pub unsafe fn initialize_encoder(
     &self,
     create_encode_params: *mut crate::sys::NV_ENC_INITIALIZE_PARAMS,
 ) -> Result<()> {
@@ -209,7 +209,7 @@ pub(crate) unsafe fn initialize_encoder(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn create_input_buffer(
+pub unsafe fn create_input_buffer(
     &self,
     create_input_buffer_params: *mut crate::sys::NV_ENC_CREATE_INPUT_BUFFER,
 ) -> Result<()> {
@@ -223,7 +223,7 @@ pub(crate) unsafe fn create_input_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn destroy_input_buffer(
+pub unsafe fn destroy_input_buffer(
     &self,
     input_buffer: crate::sys::NV_ENC_INPUT_PTR,
 ) -> Result<()> {
@@ -237,7 +237,7 @@ pub(crate) unsafe fn destroy_input_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn create_bitstream_buffer(
+pub unsafe fn create_bitstream_buffer(
     &self,
     create_bitstream_buffer_params: *mut crate::sys::NV_ENC_CREATE_BITSTREAM_BUFFER,
 ) -> Result<()> {
@@ -251,7 +251,7 @@ pub(crate) unsafe fn create_bitstream_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn destroy_bitstream_buffer(
+pub unsafe fn destroy_bitstream_buffer(
     &self,
     bitstream_buffer: crate::sys::NV_ENC_OUTPUT_PTR,
 ) -> Result<()> {
@@ -265,7 +265,7 @@ pub(crate) unsafe fn destroy_bitstream_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn encode_picture(
+pub unsafe fn encode_picture(
     &self,
     encode_pic_params: *mut crate::sys::NV_ENC_PIC_PARAMS,
 ) -> Result<()> {
@@ -279,7 +279,7 @@ pub(crate) unsafe fn encode_picture(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn lock_bitstream(
+pub unsafe fn lock_bitstream(
     &self,
     lock_bitstream_buffer_params: *mut crate::sys::NV_ENC_LOCK_BITSTREAM,
 ) -> Result<()> {
@@ -293,7 +293,7 @@ pub(crate) unsafe fn lock_bitstream(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn unlock_bitstream(
+pub unsafe fn unlock_bitstream(
     &self,
     bitstream_buffer: crate::sys::NV_ENC_OUTPUT_PTR,
 ) -> Result<()> {
@@ -307,7 +307,7 @@ pub(crate) unsafe fn unlock_bitstream(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn lock_input_buffer(
+pub unsafe fn lock_input_buffer(
     &self,
     lock_input_buffer_params: *mut crate::sys::NV_ENC_LOCK_INPUT_BUFFER,
 ) -> Result<()> {
@@ -321,7 +321,7 @@ pub(crate) unsafe fn lock_input_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn unlock_input_buffer(
+pub unsafe fn unlock_input_buffer(
     &self,
     input_buffer: crate::sys::NV_ENC_INPUT_PTR,
 ) -> Result<()> {
@@ -335,7 +335,7 @@ pub(crate) unsafe fn unlock_input_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_encode_stats(
+pub unsafe fn get_encode_stats(
     &self,
     encode_stats: *mut crate::sys::NV_ENC_STAT,
 ) -> Result<()> {
@@ -349,7 +349,7 @@ pub(crate) unsafe fn get_encode_stats(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_sequence_params(
+pub unsafe fn get_sequence_params(
     &self,
     sequence_param_payload: *mut crate::sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD,
 ) -> Result<()> {
@@ -363,7 +363,7 @@ pub(crate) unsafe fn get_sequence_params(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn register_async_event(
+pub unsafe fn register_async_event(
     &self,
     event_params: *mut crate::sys::NV_ENC_EVENT_PARAMS,
 ) -> Result<()> {
@@ -377,7 +377,7 @@ pub(crate) unsafe fn register_async_event(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn unregister_async_event(
+pub unsafe fn unregister_async_event(
     &self,
     event_params: *mut crate::sys::NV_ENC_EVENT_PARAMS,
 ) -> Result<()> {
@@ -391,7 +391,7 @@ pub(crate) unsafe fn unregister_async_event(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn map_input_resource(
+pub unsafe fn map_input_resource(
     &self,
     map_input_res_params: *mut crate::sys::NV_ENC_MAP_INPUT_RESOURCE,
 ) -> Result<()> {
@@ -405,7 +405,7 @@ pub(crate) unsafe fn map_input_resource(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn unmap_input_resource(
+pub unsafe fn unmap_input_resource(
     &self,
     mapped_input_buffer: crate::sys::NV_ENC_INPUT_PTR,
 ) -> Result<()> {
@@ -419,7 +419,7 @@ pub(crate) unsafe fn unmap_input_resource(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn invalidate_ref_frames(
+pub unsafe fn invalidate_ref_frames(
     &self,
     invalid_ref_frame_time_stamp: u64,
 ) -> Result<()> {
@@ -433,7 +433,7 @@ pub(crate) unsafe fn invalidate_ref_frames(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn register_resource(
+pub unsafe fn register_resource(
     &self,
     register_res_params: *mut crate::sys::NV_ENC_REGISTER_RESOURCE,
 ) -> Result<()> {
@@ -447,7 +447,7 @@ pub(crate) unsafe fn register_resource(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn unregister_resource(
+pub unsafe fn unregister_resource(
     &self,
     registered_res: crate::sys::NV_ENC_REGISTERED_PTR,
 ) -> Result<()> {
@@ -461,7 +461,7 @@ pub(crate) unsafe fn unregister_resource(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn reconfigure_encoder(
+pub unsafe fn reconfigure_encoder(
     &self,
     re_init_encode_params: *mut crate::sys::NV_ENC_RECONFIGURE_PARAMS,
 ) -> Result<()> {
@@ -475,7 +475,7 @@ pub(crate) unsafe fn reconfigure_encoder(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn create_buffer(
+pub unsafe fn create_buffer(
     &self,
     create_buffer_params: *mut crate::sys::NV_ENC_CREATE_MV_BUFFER,
 ) -> Result<()> {
@@ -489,7 +489,7 @@ pub(crate) unsafe fn create_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn destroy_buffer(
+pub unsafe fn destroy_buffer(
     &self,
     mv_buffer: crate::sys::NV_ENC_OUTPUT_PTR,
 ) -> Result<()> {
@@ -503,7 +503,7 @@ pub(crate) unsafe fn destroy_buffer(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn run_motion_estimation_only(
+pub unsafe fn run_motion_estimation_only(
     &self,
     me_only_params: *mut crate::sys::NV_ENC_MEONLY_PARAMS,
 ) -> Result<()> {
@@ -517,7 +517,7 @@ pub(crate) unsafe fn run_motion_estimation_only(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn set_cuda_streams(
+pub unsafe fn set_cuda_streams(
     &self,
     input_stream: crate::sys::NV_ENC_CUSTREAM_PTR,
     output_stream: crate::sys::NV_ENC_CUSTREAM_PTR,
@@ -533,7 +533,7 @@ pub(crate) unsafe fn set_cuda_streams(
     }
 }
 #[inline(always)]
-pub(crate) unsafe fn get_sequence_param_ex(
+pub unsafe fn get_sequence_param_ex(
     &self,
     enc_init_params: *mut crate::sys::NV_ENC_INITIALIZE_PARAMS,
     sequence_param_payload: *mut crate::sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD,

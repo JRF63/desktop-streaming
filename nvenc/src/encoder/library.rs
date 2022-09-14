@@ -4,10 +4,10 @@ use crate::os::windows::WindowsLibrary as LibraryImpl;
 use crate::{NvEncError, Result};
 use std::mem::MaybeUninit;
 
-pub(crate) struct NvidiaEncoderLibrary(LibraryImpl);
+pub struct NvidiaEncoderLibrary(LibraryImpl);
 
 impl NvidiaEncoderLibrary {
-    pub(crate) fn load() -> Result<Self> {
+    pub fn load() -> Result<Self> {
         #[cfg(windows)]
         const LIBRARY_NAME: &'static str = "nvEncodeAPI64.dll";
 
@@ -25,7 +25,7 @@ impl NvidiaEncoderLibrary {
         &self.0
     }
 
-    pub(crate) fn get_max_supported_version(&self) -> Result<u32> {
+    pub fn get_max_supported_version(&self) -> Result<u32> {
         const FN_NAME: &'static str = "NvEncodeAPIGetMaxSupportedVersion";
         type GetMaxSupportedVersion = unsafe extern "C" fn(*mut u32) -> crate::sys::NVENCSTATUS;
 
@@ -45,7 +45,7 @@ impl NvidiaEncoderLibrary {
         }
     }
 
-    pub(crate) fn create_instance(&self) -> Result<crate::sys::NV_ENCODE_API_FUNCTION_LIST> {
+    pub fn create_instance(&self) -> Result<crate::sys::NV_ENCODE_API_FUNCTION_LIST> {
         const FN_NAME: &'static str = "NvEncodeAPICreateInstance";
         type CreateInstance = unsafe extern "C" fn(
             *mut crate::sys::NV_ENCODE_API_FUNCTION_LIST,

@@ -23,7 +23,7 @@ impl<const N: usize> Drop for NvidiaEncoderShared<N> {
     }
 }
 
-pub(crate) fn encoder_channel<const N: usize, D, T>(
+pub fn encoder_channel<const N: usize, D, T>(
     device: &D,
     display_desc: &DXGI_OUTDUPL_DESC,
     buffer_texture: &T,
@@ -75,7 +75,7 @@ where
 }
 
 #[repr(transparent)]
-pub(crate) struct NvidiaEncoderWriter<const N: usize>(Arc<NvidiaEncoderShared<N>>);
+pub struct NvidiaEncoderWriter<const N: usize>(Arc<NvidiaEncoderShared<N>>);
 
 // Writes to `NvidiaEncoderWriter` are synchronized with reads from `NvidiaEncoderReader` but only
 // if there is exactly one reader and one writer
@@ -94,7 +94,7 @@ impl<const N: usize> NvidiaEncoderWriter<N> {
 }
 
 #[repr(transparent)]
-pub(crate) struct NvidiaEncoderReader<const N: usize>(Arc<NvidiaEncoderShared<N>>);
+pub struct NvidiaEncoderReader<const N: usize>(Arc<NvidiaEncoderShared<N>>);
 
 // Reads to `NvidiaEncoderReader` are synchronized with writes from `NvidiaEncoderWriter` but only
 // if there is exactly one reader and one writer

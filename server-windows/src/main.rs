@@ -1,5 +1,6 @@
 mod capture;
 mod device;
+mod input;
 
 use nvenc::{Codec, EncoderPreset, TuningInfo};
 use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT};
@@ -14,7 +15,6 @@ use std::sync::{
 fn main() {
     let display_index = 0;
     let formats = vec![windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM];
-    const BUF_SIZE: usize = 8;
     const NUM_FRAMES: usize = 120;
 
     let codec = Codec::H264;
@@ -26,13 +26,8 @@ fn main() {
         capture::ScreenDuplicator::new(device.clone(), display_index, &formats).unwrap();
     let display_desc = duplicator.desc();
 
-    let (mut encoder, encoder_output) = nvenc::create_encoder::<BUF_SIZE>(
-        device,
-        &display_desc,
-        codec,
-        preset,
-        tuning_info,
-    );
+    let (mut encoder, encoder_output) =
+        nvenc::create_encoder(device, &display_desc, codec, preset, tuning_info);
 
     // {
     //     for codec in &encoder.codecs().unwrap() {

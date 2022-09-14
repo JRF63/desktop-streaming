@@ -1,13 +1,13 @@
-use super::NvidiaEncoderReader;
+use super::{NvidiaEncoderReader, ENCODER_BUFFER_SIZE};
 use crate::{NvEncError, Result};
 use std::mem::MaybeUninit;
 
-pub struct EncoderOutput<const N: usize> {
-    reader: NvidiaEncoderReader<N>,
+pub struct EncoderOutput {
+    reader: NvidiaEncoderReader<ENCODER_BUFFER_SIZE>,
 }
 
-impl<const N: usize> EncoderOutput<N> {
-    pub(crate) fn new(reader: NvidiaEncoderReader<N>) -> Self {
+impl EncoderOutput {
+    pub fn new(reader: NvidiaEncoderReader<ENCODER_BUFFER_SIZE>) -> Self {
         EncoderOutput { reader }
     }
 

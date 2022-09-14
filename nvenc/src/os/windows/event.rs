@@ -8,7 +8,7 @@ use windows::Win32::{
 };
 
 #[repr(transparent)]
-pub(crate) struct EventObject(HANDLE);
+pub struct EventObject(HANDLE);
 
 impl Drop for EventObject {
     fn drop(&mut self) {
@@ -18,13 +18,13 @@ impl Drop for EventObject {
 
 impl EventObject {
     /// Create a Windows Event Object for signaling encoding completion of a frame.
-    pub(crate) fn new() -> windows::core::Result<Self> {
+    pub fn new() -> windows::core::Result<Self> {
         let event = unsafe { CreateEventA(std::ptr::null(), false, false, None) }?;
         Ok(EventObject(event))
     }
 
     /// Waits forever until the internal Event Object has been signaled.
-    pub(crate) fn blocking_wait(&self) -> windows::core::Result<()> {
+    pub fn blocking_wait(&self) -> windows::core::Result<()> {
         unsafe {
             match WaitForSingleObject(self.0, INFINITE) {
                 WAIT_OBJECT_0 => Ok(()),
@@ -34,7 +34,7 @@ impl EventObject {
     }
 
     /// Casts the `EventObject` as a raw pointer as required by the NvEncAPI structs.
-    pub(crate) fn as_ptr(&self) -> *mut c_void {
+    pub fn as_ptr(&self) -> *mut c_void {
         self.0 .0 as *mut c_void
     }
 }

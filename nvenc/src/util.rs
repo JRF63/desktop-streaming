@@ -1,16 +1,16 @@
 use std::os::raw::c_void;
 
-pub(crate) trait IntoNvEncBufferFormat {
+pub trait IntoNvEncBufferFormat {
     fn into_nvenc_buffer_format(&self) -> crate::sys::NV_ENC_BUFFER_FORMAT;
 }
 
-pub(crate) trait NvEncDevice {
+pub trait NvEncDevice {
     fn device_type() -> crate::sys::NV_ENC_DEVICE_TYPE;
 
     fn as_ptr(&self) -> *mut c_void;
 }
 
-pub(crate) trait NvEncTexture {
+pub trait NvEncTexture {
     type Format: IntoNvEncBufferFormat;
 
     fn resource_type() -> crate::sys::NV_ENC_INPUT_RESOURCE_TYPE;
@@ -21,7 +21,7 @@ pub(crate) trait NvEncTexture {
     fn as_ptr(&self) -> *mut c_void;
 }
 
-pub(crate) trait NvEncSessionParameters {
+pub trait NvEncSessionParameters {
     type Format: IntoNvEncBufferFormat;
 
     /// Returns (encode width, encode height)
@@ -35,7 +35,7 @@ pub(crate) trait NvEncSessionParameters {
 }
 
 // https://en.wikipedia.org/wiki/Binary_GCD_algorithm
-pub(crate) fn gcd(mut u: u32, mut v: u32) -> u32 {
+pub fn gcd(mut u: u32, mut v: u32) -> u32 {
     use std::cmp::min;
     use std::mem::swap;
 

@@ -6,7 +6,7 @@ use std::mem::MaybeUninit;
 use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_DESC;
 
 #[repr(transparent)]
-pub(crate) struct EncoderParams(crate::sys::NV_ENC_RECONFIGURE_PARAMS);
+pub struct EncoderParams(crate::sys::NV_ENC_RECONFIGURE_PARAMS);
 
 impl Drop for EncoderParams {
     fn drop(&mut self) {
@@ -16,7 +16,7 @@ impl Drop for EncoderParams {
 }
 
 impl EncoderParams {
-    pub(crate) fn new(
+    pub fn new(
         raw_encoder: &RawEncoder,
         display_desc: &DXGI_OUTDUPL_DESC,
         codec: Codec,
@@ -130,27 +130,27 @@ impl EncoderParams {
         Ok(Box::new(preset_config_params.presetCfg))
     }
 
-    pub(crate) fn encode_config(&self) -> &crate::sys::NV_ENC_CONFIG {
+    pub fn encode_config(&self) -> &crate::sys::NV_ENC_CONFIG {
         unsafe { &*self.init_params().encodeConfig }
     }
 
-    pub(crate) fn encode_config_mut(&mut self) -> &mut crate::sys::NV_ENC_CONFIG {
+    pub fn encode_config_mut(&mut self) -> &mut crate::sys::NV_ENC_CONFIG {
         unsafe { &mut *self.init_params_mut().encodeConfig }
     }
 
-    pub(crate) fn init_params(&self) -> &crate::sys::NV_ENC_INITIALIZE_PARAMS {
+    pub fn init_params(&self) -> &crate::sys::NV_ENC_INITIALIZE_PARAMS {
         &self.0.reInitEncodeParams
     }
 
-    pub(crate) fn init_params_mut(&mut self) -> &mut crate::sys::NV_ENC_INITIALIZE_PARAMS {
+    pub fn init_params_mut(&mut self) -> &mut crate::sys::NV_ENC_INITIALIZE_PARAMS {
         &mut self.0.reInitEncodeParams
     }
 
-    pub(crate) fn reconfig_params(&self) -> &crate::sys::NV_ENC_RECONFIGURE_PARAMS {
+    pub fn reconfig_params(&self) -> &crate::sys::NV_ENC_RECONFIGURE_PARAMS {
         &self.0
     }
 
-    pub(crate) fn reconfig_params_mut(&mut self) -> &mut crate::sys::NV_ENC_RECONFIGURE_PARAMS {
+    pub fn reconfig_params_mut(&mut self) -> &mut crate::sys::NV_ENC_RECONFIGURE_PARAMS {
         &mut self.0
     }
 }

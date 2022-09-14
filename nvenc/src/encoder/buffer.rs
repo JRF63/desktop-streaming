@@ -12,11 +12,11 @@ use std::{
 // TODO: Make this a generic parameter
 use crate::os::windows::EventObject;
 
-pub(crate) struct NvidiaEncoderBufferItems {
-    pub(crate) registered_resource: NonNull<c_void>,
-    pub(crate) mapped_input: crate::sys::NV_ENC_INPUT_PTR,
-    pub(crate) output_buffer: NonNull<c_void>,
-    pub(crate) event_obj: EventObject,
+pub struct NvidiaEncoderBufferItems {
+    pub registered_resource: NonNull<c_void>,
+    pub mapped_input: crate::sys::NV_ENC_INPUT_PTR,
+    pub output_buffer: NonNull<c_void>,
+    pub event_obj: EventObject,
 }
 
 // SAFETY: All of the struct members are pointers or pointer-like objects (`HANDLE` for the Event)
@@ -25,7 +25,7 @@ pub(crate) struct NvidiaEncoderBufferItems {
 unsafe impl Send for NvidiaEncoderBufferItems {}
 
 impl NvidiaEncoderBufferItems {
-    pub(crate) fn new<T>(
+    pub fn new<T>(
         raw_encoder: &RawEncoder,
         buffer_texture: &T,
         subresource_index: u32,
@@ -60,7 +60,7 @@ impl NvidiaEncoderBufferItems {
         })
     }
 
-    pub(crate) fn cleanup(&mut self, raw_encoder: &RawEncoder) {
+    pub fn cleanup(&mut self, raw_encoder: &RawEncoder) {
         // TODO: Prob should log the errors instead of ignoring them.
         unsafe {
             let _ = raw_encoder.unmap_input_resource(self.mapped_input);

@@ -50,7 +50,7 @@ for m in pattern.finditer(sigs):
     member_name = mapping[ptr_type]
     fn_name = rustify_name(member_name[5:]) # strip nvEnc
     print('#[inline(always)]')
-    print(f'pub(crate) unsafe fn {fn_name}(')
+    print(f'pub unsafe fn {fn_name}(')
     print('    &self,')
 
     args = []

@@ -1,5 +1,6 @@
 mod buffer;
 mod config;
+mod event;
 mod library;
 mod output;
 mod queries;
@@ -25,23 +26,26 @@ use windows::{
 
 use crate::os::windows::create_texture_buffer;
 
-pub struct NvidiaEncoder<const N: usize> {
-    writer: NvidiaEncoderWriter<N>,
+/// Size of the ring buffer that is shared between the input and output
+const ENCODER_BUFFER_SIZE: usize = 8;
+
+pub struct NvidiaEncoder {
+    writer: NvidiaEncoderWriter<ENCODER_BUFFER_SIZE>,
     device_context: ID3D11DeviceContext,
     buffer_texture: ID3D11Texture2D,
     encode_pic_params: crate::sys::NV_ENC_PIC_PARAMS,
     encoder_params: EncoderParams,
 }
 
-impl<const N: usize> Drop for NvidiaEncoder<N> {
+impl Drop for NvidiaEncoder {
     fn drop(&mut self) {
         let _ = self.end_encode();
     }
 }
 
-impl<const N: usize> NvidiaEncoder<N> {
-    pub(crate) fn new(
-        writer: NvidiaEncoderWriter<N>,
+impl NvidiaEncoder {
+    pub fn new(
+        writer: NvidiaEncoderWriter<ENCODER_BUFFER_SIZE>,
         device_context: ID3D11DeviceContext,
         buffer_texture: ID3D11Texture2D,
         encoder_params: EncoderParams,
@@ -83,7 +87,7 @@ impl<const N: usize> NvidiaEncoder<N> {
         }
     }
 
-    pub(crate) fn reconfigure_params(&mut self) -> Result<()> {
+    pub fn reconfigure_params(&mut self) -> Result<()> {
         unsafe {
             self.writer
                 .reconfigure_encoder(self.encoder_params.reconfig_params_mut())?;
@@ -134,11 +138,11 @@ impl<const N: usize> NvidiaEncoder<N> {
         let raw_encoder: &RawEncoder = self.writer.deref();
 
         self.writer.write(frame, |index, buffer, frame| {
-            NvidiaEncoder::<N>::copy_input_frame(device_context, input_textures, frame, index);
+            NvidiaEncoder::copy_input_frame(device_context, input_textures, frame, index);
             post_copy_op();
 
             buffer.mapped_input =
-                NvidiaEncoder::<N>::map_input(raw_encoder, buffer.registered_resource.as_ptr())?;
+                NvidiaEncoder::map_input(raw_encoder, buffer.registered_resource.as_ptr())?;
             pic_params.inputBuffer = buffer.mapped_input;
             pic_params.outputBitstream = buffer.output_buffer.as_ptr();
             pic_params.completionEvent = buffer.event_obj.as_ptr();
@@ -215,19 +219,19 @@ impl<const N: usize> NvidiaEncoder<N> {
     }
 }
 
-pub fn create_encoder<const N: usize>(
+pub fn create_encoder(
     device: ID3D11Device,
     display_desc: &DXGI_OUTDUPL_DESC,
     codec: Codec,
     preset: EncoderPreset,
     tuning_info: TuningInfo,
-) -> (NvidiaEncoder<N>, EncoderOutput<N>) {
+) -> (NvidiaEncoder, EncoderOutput) {
     let mut device_context = None;
     unsafe {
         device.GetImmediateContext(&mut device_context);
     }
 
-    let buffer_texture = create_texture_buffer(&device, display_desc, N).unwrap();
+    let buffer_texture = create_texture_buffer(&device, display_desc, ENCODER_BUFFER_SIZE).unwrap();
 
     let ((writer, reader), encoder_params) = encoder_channel(
         &device,
