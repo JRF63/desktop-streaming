@@ -1,5 +1,5 @@
-use super::{NvidiaEncoderReader, ENCODER_BUFFER_SIZE};
-use crate::{NvEncError, Result};
+use super::{EventObjectTrait, NvidiaEncoderReader, ENCODER_BUFFER_SIZE};
+use crate::Result;
 use std::mem::MaybeUninit;
 
 pub struct EncoderOutput {
@@ -16,10 +16,7 @@ impl EncoderOutput {
         mut consume_output: F,
     ) -> Result<()> {
         self.reader.read(|buffer| -> Result<()> {
-            buffer
-                .event_obj
-                .blocking_wait()
-                .map_err(|_| NvEncError::AsyncEventWaitError)?;
+            buffer.event_obj.wait()?;
 
             // End of input stream
             if buffer.mapped_input.is_null() {

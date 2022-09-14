@@ -12,6 +12,7 @@ use self::{
     output::EncoderOutput,
     raw::RawEncoder,
     shared::{encoder_channel, NvidiaEncoderReader, NvidiaEncoderWriter},
+    event::{EventObject, EventObjectTrait}
 };
 use crate::{Codec, EncoderPreset, Result, TuningInfo};
 use std::{mem::MaybeUninit, ops::Deref};

@@ -1,4 +1,4 @@
-use super::{RawEncoder, Result};
+use super::{EventObject, EventObjectTrait, RawEncoder, Result};
 use crate::{
     util::{IntoNvEncBufferFormat, NvEncTexture},
     NvEncError,
@@ -8,9 +8,6 @@ use std::{
     os::raw::c_void,
     ptr::NonNull,
 };
-
-// TODO: Make this a generic parameter
-use crate::os::windows::EventObject;
 
 pub struct NvidiaEncoderBufferItems {
     pub registered_resource: NonNull<c_void>,
@@ -37,7 +34,7 @@ impl NvidiaEncoderBufferItems {
             register_input_resource(raw_encoder, buffer_texture, subresource_index)?;
         let output_buffer = create_output_buffer(raw_encoder)?;
 
-        let event_obj = EventObject::new().or(Err(NvEncError::AsyncEventCreationFailed))?;
+        let event_obj = EventObject::new()?;
         let registered_async = register_async_event(raw_encoder, &event_obj)?;
 
         // All calls succeeded, remove the RAII wrappers
@@ -136,7 +133,8 @@ struct OutputBufferRAII<'a> {
 impl<'a> Drop for OutputBufferRAII<'a> {
     fn drop(&mut self) {
         unsafe {
-            let _ = self.raw_encoder
+            let _ = self
+                .raw_encoder
                 .destroy_bitstream_buffer(self.output_buffer.as_ptr());
         }
     }

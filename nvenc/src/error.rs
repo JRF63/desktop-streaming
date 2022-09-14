@@ -59,23 +59,28 @@ pub enum NvEncError {
 
     // This library's errors
     #[error("The shared library for `nvEncodeAPI64` is not signed and may have been tampered.")]
-    LibraryNotSigned = 0x7fffffff,
+    LibraryNotSigned = LIBRARY_ERRORS_OFFSET + 0,
     #[error("Loading the shared library for `nvEncodeAPI64` failed.")]
-    LibraryLoadingFailed = 0x7fffffff - 1,
+    LibraryLoadingFailed = LIBRARY_ERRORS_OFFSET + 1,
     #[error("Unable to locate `NvEncodeAPIGetMaxSupportedVersion` in the shared library.")]
-    GetMaxSupportedVersionLoadingFailed = 0x7fffffff - 2,
+    GetMaxSupportedVersionLoadingFailed = LIBRARY_ERRORS_OFFSET + 2,
     #[error("Unable to locate `NvEncodeAPICreateInstance` in the shared library.")]
-    CreateInstanceLoadingFailed = 0x7fffffff - 3,
+    CreateInstanceLoadingFailed = LIBRARY_ERRORS_OFFSET + 3,
     #[error("The installed driver does not support the version of the NvEnc API that this library is compiled with.")]
-    UnsupportedVersion = 0x7fffffff - 4,
+    UnsupportedVersion = LIBRARY_ERRORS_OFFSET + 4,
     #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
-    MalformedFunctionList = 0x7fffffff - 5,
+    MalformedFunctionList = LIBRARY_ERRORS_OFFSET + 5,
 
     #[error("Could not create a Windows event object")]
-    AsyncEventCreationFailed = 0x7fffffff - 20,
+    EventObjectCreationFailed = EVENT_OBJECT_ERRORS_OFFSET + 0,
     #[error("Error while waiting for the event object to be signaled")]
-    AsyncEventWaitError = 0x7fffffff - 21,
+    EventObjectWaitError = EVENT_OBJECT_ERRORS_OFFSET + 1,
+    #[error("Event timed-out while waiting")]
+    EventObjectWaitTimeout = EVENT_OBJECT_ERRORS_OFFSET + 2,
 }
+
+const LIBRARY_ERRORS_OFFSET: i32 = 100;
+const EVENT_OBJECT_ERRORS_OFFSET: i32 = 200;
 
 impl NvEncError {
     pub fn from_nvenc_status(status: crate::sys::NVENCSTATUS) -> Option<Self> {
