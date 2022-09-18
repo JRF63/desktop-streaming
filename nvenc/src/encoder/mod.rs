@@ -161,10 +161,10 @@ impl NvidiaEncoder {
     }
 
     fn end_encode(&mut self) -> Result<()> {
-        // TODO: Signal EOS to the output via an AtomicBool or something
         let pic_params = &mut self.encode_pic_params;
 
         self.writer.write((), |_, buffer, ()| {
+            buffer.end_of_stream = true;
             pic_params.inputBuffer = std::ptr::null_mut();
             pic_params.outputBitstream = std::ptr::null_mut();
             pic_params.completionEvent = buffer.event_obj.as_ptr();

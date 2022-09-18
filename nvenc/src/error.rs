@@ -70,6 +70,8 @@ pub enum NvEncError {
     UnsupportedVersion = LIBRARY_ERRORS_OFFSET + 4,
     #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
     MalformedFunctionList = LIBRARY_ERRORS_OFFSET + 5,
+    #[error("Input has signaled end of stream")]
+    EndOfStream = LIBRARY_ERRORS_OFFSET + 6,
 
     #[error("Could not create a Windows event object")]
     EventObjectCreationFailed = EVENT_OBJECT_ERRORS_OFFSET + 0,

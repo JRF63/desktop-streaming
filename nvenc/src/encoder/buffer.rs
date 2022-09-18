@@ -14,6 +14,7 @@ pub struct NvidiaEncoderBufferItems {
     pub mapped_input: crate::sys::NV_ENC_INPUT_PTR,
     pub output_buffer: NonNull<c_void>,
     pub event_obj: EventObject,
+    pub end_of_stream: bool,
 }
 
 // SAFETY: All of the struct members are pointers or pointer-like objects (`HANDLE` for the Event)
@@ -54,6 +55,7 @@ impl NvidiaEncoderBufferItems {
             mapped_input: std::ptr::null_mut(),
             output_buffer,
             event_obj,
+            end_of_stream: false,
         })
     }
 

@@ -1,5 +1,5 @@
 use super::{EventObjectTrait, NvidiaEncoderReader, ENCODER_BUFFER_SIZE};
-use crate::Result;
+use crate::{NvEncError, Result};
 use std::mem::MaybeUninit;
 
 pub struct EncoderOutput {
@@ -18,9 +18,8 @@ impl EncoderOutput {
         self.reader.read(|buffer| -> Result<()> {
             buffer.event_obj.wait()?;
 
-            // End of input stream
-            if buffer.mapped_input.is_null() {
-                return Ok(());
+            if buffer.end_of_stream {
+                return Err(NvEncError::EndOfStream);
             }
 
             let mut lock_params: crate::sys::NV_ENC_LOCK_BITSTREAM =

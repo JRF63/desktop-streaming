@@ -7,10 +7,6 @@ use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIM
 
 use std::fs::File;
 use std::io::prelude::*;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
 
 fn main() {
     let display_index = 0;
@@ -41,9 +37,6 @@ fn main() {
     //     return;
     // }
 
-    let end = Arc::new(AtomicBool::new(false));
-    let eos = end.clone();
-
     let a = std::thread::spawn(move || {
         // For debugging
         #[allow(unused_variables, unused_mut)]
@@ -51,30 +44,28 @@ fn main() {
 
         let mut timestamps = Vec::with_capacity(120);
 
-        while !eos.load(Ordering::Acquire) {
-            if let Ok(_) = encoder_output.wait_for_output(|lock| {
-                let now = timer_counter() as u64;
-                let time_delta = now - lock.outputTimeStamp;
-                timestamps.push(time_delta);
+        while let Ok(_) = encoder_output.wait_for_output(|lock| {
+            let now = timer_counter() as u64;
+            let time_delta = now - lock.outputTimeStamp;
+            timestamps.push(time_delta);
 
-                println!(
-                    "{} - {}: {} bytes",
-                    lock.frameIdx, time_delta, lock.bitstreamSizeInBytes
-                );
+            println!(
+                "{} - {}: {} bytes",
+                lock.frameIdx, time_delta, lock.bitstreamSizeInBytes
+            );
 
-                let mut file = File::create(format!("nvenc/regex/nalus/{}.h264", i)).unwrap();
-                i += 1;
+            let mut file = File::create(format!("nvenc/regex/nalus/{}.h264", i)).unwrap();
+            i += 1;
 
-                let slice = unsafe {
-                    std::slice::from_raw_parts(
-                        lock.bitstreamBufferPtr as *const u8,
-                        lock.bitstreamSizeInBytes as usize,
-                    )
-                };
+            let slice = unsafe {
+                std::slice::from_raw_parts(
+                    lock.bitstreamBufferPtr as *const u8,
+                    lock.bitstreamSizeInBytes as usize,
+                )
+            };
 
-                file.write_all(slice).unwrap();
-            }) {}
-        }
+            file.write_all(slice).unwrap();
+        }) {}
         let div = timer_frequency() as u64 / 1000000;
         for v in &mut timestamps {
             *v /= div;
@@ -117,7 +108,6 @@ fn main() {
     }
 
     std::mem::drop(encoder);
-    end.store(true, Ordering::Release);
     a.join().unwrap();
 }
 
