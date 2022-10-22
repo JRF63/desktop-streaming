@@ -113,8 +113,11 @@ impl LibraryImplTrait for LibraryImpl {
 
     /// Extracts a function pointer from the library. The returned function pointer is bound to
     /// the lifetime `&self`.
-    unsafe fn fn_ptr<T>(&self, fn_name: &str) -> Option<&T> {
-        GetProcAddress(self.as_inner(), fn_name).map(|ptr| &*(ptr as *const T))
+    unsafe fn fn_ptr<T>(&self, fn_name: &str) -> Option<T> {
+        GetProcAddress(self.as_inner(), fn_name).map(|ptr| {
+            // Fancy transmute
+            (&ptr as *const _ as *const T).read()
+        })
     }
 }
 

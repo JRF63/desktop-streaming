@@ -1,5 +1,5 @@
 use super::RawEncoder;
-use crate::{Codec, EncoderPreset, Result, TuningInfo};
+use crate::{Codec, EncodePreset, Result, TuningInfo};
 use std::mem::MaybeUninit;
 
 // TODO: Don't depend on this Windows-specific struct
@@ -20,7 +20,7 @@ impl EncoderParams {
         raw_encoder: &RawEncoder,
         display_desc: &DXGI_OUTDUPL_DESC,
         codec: Codec,
-        preset: EncoderPreset,
+        preset: EncodePreset,
         tuning_info: TuningInfo,
     ) -> Result<Self> {
         let mut reconfig_params: crate::sys::NV_ENC_RECONFIGURE_PARAMS =
@@ -64,7 +64,7 @@ impl EncoderParams {
     fn get_codec_config_for_preset(
         raw_encoder: &RawEncoder,
         codec: Codec,
-        preset: EncoderPreset,
+        preset: EncodePreset,
         tuning_info: TuningInfo,
     ) -> Result<Box<crate::sys::NV_ENC_CONFIG>> {
         let encode_guid = codec.into();

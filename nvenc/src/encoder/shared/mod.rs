@@ -3,7 +3,7 @@ mod sync;
 use super::{buffer::NvidiaEncoderBufferItems, EncoderParams, RawEncoder};
 use crate::{
     util::{NvEncDevice, NvEncTexture},
-    Codec, EncoderPreset, Result, TuningInfo,
+    Codec, EncodePreset, Result, TuningInfo,
 };
 use std::{mem::MaybeUninit, ops::Deref, sync::Arc};
 use sync::{CyclicBuffer, CyclicBufferReader, CyclicBufferWriter};
@@ -28,7 +28,7 @@ pub fn encoder_channel<const N: usize, D, T>(
     display_desc: &DXGI_OUTDUPL_DESC,
     buffer_texture: &T,
     codec: Codec,
-    preset: EncoderPreset,
+    preset: EncodePreset,
     tuning_info: TuningInfo,
 ) -> Result<(
     (NvidiaEncoderWriter<N>, NvidiaEncoderReader<N>),

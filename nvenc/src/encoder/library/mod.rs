@@ -19,7 +19,7 @@ trait LibraryImplTrait: Sized {
     fn load(lib_name: &str) -> Result<Self>;
 
     /// Extracts a function pointer from the library.
-    unsafe fn fn_ptr<T>(&self, fn_name: &str) -> Option<&T>;
+    unsafe fn fn_ptr<T>(&self, fn_name: &str) -> Option<T>;
 }
 
 pub struct NvidiaEncoderLibrary(LibraryImpl);
@@ -41,12 +41,12 @@ impl NvidiaEncoderLibrary {
         const FN_NAME: &'static str = "NvEncodeAPIGetMaxSupportedVersion";
         type GetMaxSupportedVersion = unsafe extern "C" fn(*mut u32) -> crate::sys::NVENCSTATUS;
 
-        let get_max_supported_version: &GetMaxSupportedVersion = unsafe {
+        let get_max_supported_version: GetMaxSupportedVersion = unsafe {
             self.as_inner()
                 .fn_ptr(FN_NAME)
                 .ok_or(NvEncError::GetMaxSupportedVersionLoadingFailed)?
         };
-
+        
         let mut version: u32 = 0;
         let status = unsafe { get_max_supported_version(&mut version) };
 
@@ -62,7 +62,7 @@ impl NvidiaEncoderLibrary {
             *mut crate::sys::NV_ENCODE_API_FUNCTION_LIST,
         ) -> crate::sys::NVENCSTATUS;
 
-        let create_instance: &CreateInstance = unsafe {
+        let create_instance: CreateInstance = unsafe {
             self.as_inner()
                 .fn_ptr(FN_NAME)
                 .ok_or(NvEncError::CreateInstanceLoadingFailed)?

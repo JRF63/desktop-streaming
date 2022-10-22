@@ -2,7 +2,7 @@ mod capture;
 mod device;
 mod input;
 
-use nvenc::{Codec, EncoderPreset, TuningInfo};
+use nvenc::{Codec, EncodePreset, TuningInfo};
 use windows::Win32::Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT};
 
 use std::fs::File;
@@ -14,7 +14,7 @@ fn main() {
     const NUM_FRAMES: usize = 120;
 
     let codec = Codec::H264;
-    let preset = EncoderPreset::P7;
+    let preset = EncodePreset::P7;
     let tuning_info = TuningInfo::UltraLowLatency;
 
     let device = device::create_d3d11_device().unwrap();
@@ -36,6 +36,7 @@ fn main() {
     //     println!("\nSPS:\n{},{:b},{}", csd[5], csd[6], csd[7]);
     //     return;
     // }
+    // dbg!(encoder.encode_presets(codec).unwrap());
 
     let a = std::thread::spawn(move || {
         // For debugging

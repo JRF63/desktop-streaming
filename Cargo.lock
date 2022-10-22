@@ -246,7 +246,9 @@ dependencies = [
 name = "nvenc"
 version = "0.1.0"
 dependencies = [
+ "lazy_static",
  "nvenc-sys",
+ "regex",
  "thiserror",
  "windows",
 ]

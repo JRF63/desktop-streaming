@@ -131,7 +131,7 @@ impl RawEncoder {
             library,
         })
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_guid_count(&self, encode_guid_count: *mut u32) -> Result<()> {
         let status = (self.functions.nvEncGetEncodeGUIDCount.unwrap_unchecked())(
             self.encoder_ptr.as_ptr(),
@@ -142,7 +142,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_guids(
         &self,
         guids: *mut crate::sys::GUID,
@@ -160,7 +160,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_profile_guid_count(
         &self,
         encode_guid: crate::sys::GUID,
@@ -179,7 +179,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_profile_guids(
         &self,
         encode_guid: crate::sys::GUID,
@@ -199,7 +199,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_input_format_count(
         &self,
         encode_guid: crate::sys::GUID,
@@ -215,7 +215,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_input_formats(
         &self,
         encode_guid: crate::sys::GUID,
@@ -235,7 +235,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_caps(
         &self,
         encode_guid: crate::sys::GUID,
@@ -253,7 +253,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_preset_count(
         &self,
         encode_guid: crate::sys::GUID,
@@ -269,7 +269,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_preset_guids(
         &self,
         encode_guid: crate::sys::GUID,
@@ -289,7 +289,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_preset_config(
         &self,
         encode_guid: crate::sys::GUID,
@@ -307,7 +307,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_preset_config_ex(
         &self,
         encode_guid: crate::sys::GUID,
@@ -330,7 +330,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn initialize_encoder(
         &self,
         create_encode_params: *mut crate::sys::NV_ENC_INITIALIZE_PARAMS,
@@ -344,7 +344,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn create_input_buffer(
         &self,
         create_input_buffer_params: *mut crate::sys::NV_ENC_CREATE_INPUT_BUFFER,
@@ -358,7 +358,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn destroy_input_buffer(
         &self,
         input_buffer: crate::sys::NV_ENC_INPUT_PTR,
@@ -372,7 +372,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn create_bitstream_buffer(
         &self,
         create_bitstream_buffer_params: *mut crate::sys::NV_ENC_CREATE_BITSTREAM_BUFFER,
@@ -386,7 +386,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn destroy_bitstream_buffer(
         &self,
         bitstream_buffer: crate::sys::NV_ENC_OUTPUT_PTR,
@@ -400,7 +400,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn encode_picture(
         &self,
         encode_pic_params: *mut crate::sys::NV_ENC_PIC_PARAMS,
@@ -414,7 +414,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn lock_bitstream(
         &self,
         lock_bitstream_buffer_params: *mut crate::sys::NV_ENC_LOCK_BITSTREAM,
@@ -428,7 +428,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unlock_bitstream(
         &self,
         bitstream_buffer: crate::sys::NV_ENC_OUTPUT_PTR,
@@ -442,7 +442,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn lock_input_buffer(
         &self,
         lock_input_buffer_params: *mut crate::sys::NV_ENC_LOCK_INPUT_BUFFER,
@@ -456,7 +456,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unlock_input_buffer(
         &self,
         input_buffer: crate::sys::NV_ENC_INPUT_PTR,
@@ -470,7 +470,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_encode_stats(
         &self,
         encode_stats: *mut crate::sys::NV_ENC_STAT,
@@ -484,7 +484,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_sequence_params(
         &self,
         sequence_param_payload: *mut crate::sys::NV_ENC_SEQUENCE_PARAM_PAYLOAD,
@@ -498,7 +498,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn register_async_event(
         &self,
         event_params: *mut crate::sys::NV_ENC_EVENT_PARAMS,
@@ -512,7 +512,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unregister_async_event(
         &self,
         event_params: *mut crate::sys::NV_ENC_EVENT_PARAMS,
@@ -526,7 +526,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn map_input_resource(
         &self,
         map_input_res_params: *mut crate::sys::NV_ENC_MAP_INPUT_RESOURCE,
@@ -540,7 +540,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unmap_input_resource(
         &self,
         mapped_input_buffer: crate::sys::NV_ENC_INPUT_PTR,
@@ -554,7 +554,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn invalidate_ref_frames(
         &self,
         invalid_ref_frame_time_stamp: u64,
@@ -568,7 +568,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn register_resource(
         &self,
         register_res_params: *mut crate::sys::NV_ENC_REGISTER_RESOURCE,
@@ -582,7 +582,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn unregister_resource(
         &self,
         registered_res: crate::sys::NV_ENC_REGISTERED_PTR,
@@ -596,7 +596,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn reconfigure_encoder(
         &self,
         re_init_encode_params: *mut crate::sys::NV_ENC_RECONFIGURE_PARAMS,
@@ -610,7 +610,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn create_buffer(
         &self,
         create_buffer_params: *mut crate::sys::NV_ENC_CREATE_MV_BUFFER,
@@ -624,7 +624,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn destroy_buffer(
         &self,
         mv_buffer: crate::sys::NV_ENC_OUTPUT_PTR,
@@ -638,7 +638,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn run_motion_estimation_only(
         &self,
         me_only_params: *mut crate::sys::NV_ENC_MEONLY_PARAMS,
@@ -652,7 +652,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn set_cuda_streams(
         &self,
         input_stream: crate::sys::NV_ENC_CUSTREAM_PTR,
@@ -668,7 +668,7 @@ impl RawEncoder {
             Some(err) => Err(err),
         }
     }
-    #[inline(always)]
+    #[inline]
     pub unsafe fn get_sequence_param_ex(
         &self,
         enc_init_params: *mut crate::sys::NV_ENC_INITIALIZE_PARAMS,

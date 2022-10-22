@@ -3,6 +3,7 @@ mod guids;
 pub use guids::*;
 
 #[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub enum Codec {
     H264,
     Hevc,
@@ -30,6 +31,7 @@ impl From<crate::sys::GUID> for Codec {
 }
 
 #[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub enum CodecProfile {
     Autoselect,
     H264Baseline,
@@ -93,7 +95,18 @@ impl From<crate::sys::GUID> for CodecProfile {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum EncoderPreset {
+#[non_exhaustive]
+pub enum EncodePreset {
+    DefaultPreset,
+    Hp,
+    Hq,
+    Bd,
+    LowLatencyDefault,
+    LowLatencyHq,
+    LowLatencyHp,
+    LosslessDefault,
+    LosslessHp,
+    Streaming,
     P1,
     P2,
     P3,
@@ -103,36 +116,66 @@ pub enum EncoderPreset {
     P7,
 }
 
-impl Into<crate::sys::GUID> for EncoderPreset {
+impl Into<crate::sys::GUID> for EncodePreset {
     fn into(self) -> crate::sys::GUID {
         match self {
-            EncoderPreset::P1 => NV_ENC_PRESET_P1_GUID,
-            EncoderPreset::P2 => NV_ENC_PRESET_P2_GUID,
-            EncoderPreset::P3 => NV_ENC_PRESET_P3_GUID,
-            EncoderPreset::P4 => NV_ENC_PRESET_P4_GUID,
-            EncoderPreset::P5 => NV_ENC_PRESET_P5_GUID,
-            EncoderPreset::P6 => NV_ENC_PRESET_P6_GUID,
-            EncoderPreset::P7 => NV_ENC_PRESET_P7_GUID,
+            EncodePreset::DefaultPreset => NV_ENC_PRESET_DEFAULT_GUID,
+            EncodePreset::Hp => NV_ENC_PRESET_HP_GUID,
+            EncodePreset::Hq => NV_ENC_PRESET_HQ_GUID,
+            EncodePreset::Bd => NV_ENC_PRESET_BD_GUID,
+            EncodePreset::LowLatencyDefault => NV_ENC_PRESET_LOW_LATENCY_DEFAULT_GUID,
+            EncodePreset::LowLatencyHq => NV_ENC_PRESET_LOW_LATENCY_HQ_GUID,
+            EncodePreset::LowLatencyHp => NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
+            EncodePreset::LosslessDefault => NV_ENC_PRESET_LOSSLESS_DEFAULT_GUID,
+            EncodePreset::LosslessHp => NV_ENC_PRESET_LOSSLESS_HP_GUID,
+            EncodePreset::Streaming => NV_ENC_PRESET_STREAMING,
+            EncodePreset::P1 => NV_ENC_PRESET_P1_GUID,
+            EncodePreset::P2 => NV_ENC_PRESET_P2_GUID,
+            EncodePreset::P3 => NV_ENC_PRESET_P3_GUID,
+            EncodePreset::P4 => NV_ENC_PRESET_P4_GUID,
+            EncodePreset::P5 => NV_ENC_PRESET_P5_GUID,
+            EncodePreset::P6 => NV_ENC_PRESET_P6_GUID,
+            EncodePreset::P7 => NV_ENC_PRESET_P7_GUID,
         }
     }
 }
 
-impl From<crate::sys::GUID> for EncoderPreset {
+impl From<crate::sys::GUID> for EncodePreset {
     fn from(guid: crate::sys::GUID) -> Self {
-        if guid == NV_ENC_PRESET_P1_GUID {
-            EncoderPreset::P1
+        if guid == NV_ENC_PRESET_DEFAULT_GUID {
+            EncodePreset::DefaultPreset
+        } else if guid == NV_ENC_PRESET_HP_GUID {
+            EncodePreset::Hp
+        } else if guid == NV_ENC_PRESET_HQ_GUID {
+            EncodePreset::Hq
+        } else if guid == NV_ENC_PRESET_BD_GUID {
+            EncodePreset::Bd
+        } else if guid == NV_ENC_PRESET_LOW_LATENCY_DEFAULT_GUID {
+            EncodePreset::LowLatencyDefault
+        } else if guid == NV_ENC_PRESET_LOW_LATENCY_HQ_GUID {
+            EncodePreset::LowLatencyHq
+        } else if guid == NV_ENC_PRESET_LOW_LATENCY_HP_GUID {
+            EncodePreset::LowLatencyHp
+        } else if guid == NV_ENC_PRESET_LOSSLESS_DEFAULT_GUID {
+            EncodePreset::LosslessDefault
+        } else if guid == NV_ENC_PRESET_LOSSLESS_HP_GUID {
+            EncodePreset::LosslessHp
+        } else if guid == NV_ENC_PRESET_STREAMING {
+            EncodePreset::Streaming
+        } else if guid == NV_ENC_PRESET_P1_GUID {
+            EncodePreset::P1
         } else if guid == NV_ENC_PRESET_P2_GUID {
-            EncoderPreset::P2
+            EncodePreset::P2
         } else if guid == NV_ENC_PRESET_P3_GUID {
-            EncoderPreset::P3
+            EncodePreset::P3
         } else if guid == NV_ENC_PRESET_P4_GUID {
-            EncoderPreset::P4
+            EncodePreset::P4
         } else if guid == NV_ENC_PRESET_P5_GUID {
-            EncoderPreset::P5
+            EncodePreset::P5
         } else if guid == NV_ENC_PRESET_P6_GUID {
-            EncoderPreset::P6
+            EncodePreset::P6
         } else if guid == NV_ENC_PRESET_P7_GUID {
-            EncoderPreset::P7
+            EncodePreset::P7
         } else {
             panic!("Invalid encoder preset.")
         }
@@ -140,6 +183,7 @@ impl From<crate::sys::GUID> for EncoderPreset {
 }
 
 #[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub enum TuningInfo {
     Undefined,
     HighQuality,
@@ -155,7 +199,9 @@ impl Into<crate::sys::NV_ENC_TUNING_INFO> for TuningInfo {
             TuningInfo::HighQuality => {
                 crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY
             }
-            TuningInfo::LowLatency => crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY,
+            TuningInfo::LowLatency => {
+                crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY
+            }
             TuningInfo::UltraLowLatency => {
                 crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY
             }
@@ -171,7 +217,9 @@ impl From<crate::sys::NV_ENC_TUNING_INFO> for TuningInfo {
             crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY => {
                 TuningInfo::HighQuality
             }
-            crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY => TuningInfo::LowLatency,
+            crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_LOW_LATENCY => {
+                TuningInfo::LowLatency
+            }
             crate::sys::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY => {
                 TuningInfo::UltraLowLatency
             }

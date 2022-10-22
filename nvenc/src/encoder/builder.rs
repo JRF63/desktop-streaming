@@ -1,20 +1,24 @@
-use super::{NvidiaEncoder, Result};
-use crate::{Codec, CodecProfile, EncodePreset};
+use super::raw_encoder::RawEncoder;
+use crate::{Codec, CodecProfile, Result};
 use std::mem::MaybeUninit;
 
-impl NvidiaEncoder {
+pub struct EncoderBuilder {
+    raw_encoder: RawEncoder,
+}
+
+impl EncoderBuilder {
     /// List all supported codecs (H.264, HEVC, etc.).
     pub fn codecs(&self) -> Result<Vec<Codec>> {
+        let mut tmp = MaybeUninit::uninit();
         let codec_guid_count = unsafe {
-            let mut tmp = MaybeUninit::uninit();
-            self.writer.get_encode_guid_count(tmp.as_mut_ptr())?;
+            self.raw_encoder.get_encode_guid_count(tmp.as_mut_ptr())?;
             tmp.assume_init()
         };
 
         let mut codec_guids = Vec::with_capacity(codec_guid_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            self.writer.get_encode_guids(
+            self.raw_encoder.get_encode_guids(
                 codec_guids.as_mut_ptr(),
                 codec_guid_count,
                 num_entries.as_mut_ptr(),
@@ -29,9 +33,9 @@ impl NvidiaEncoder {
     /// Lists the profiles available for a codec.
     pub fn codec_profiles(&self, codec: Codec) -> Result<Vec<CodecProfile>> {
         let codec = codec.into();
+        let mut tmp = MaybeUninit::uninit();
         let profile_guid_count = unsafe {
-            let mut tmp = MaybeUninit::uninit();
-            self.writer
+            self.raw_encoder
                 .get_encode_profile_guid_count(codec, tmp.as_mut_ptr())?;
             tmp.assume_init()
         };
@@ -39,7 +43,7 @@ impl NvidiaEncoder {
         let mut profile_guids = Vec::with_capacity(profile_guid_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            self.writer.get_encode_profile_guids(
+            self.raw_encoder.get_encode_profile_guids(
                 codec,
                 profile_guids.as_mut_ptr(),
                 profile_guid_count,
@@ -52,31 +56,6 @@ impl NvidiaEncoder {
         Ok(codec_profiles)
     }
 
-    pub fn encode_presets(&self, codec: Codec) -> Result<Vec<EncodePreset>> {
-        let codec = codec.into();
-        let preset_guid_count = unsafe {
-            let mut tmp = MaybeUninit::uninit();
-            self.writer
-                .get_encode_preset_count(codec, tmp.as_mut_ptr())?;
-            tmp.assume_init()
-        };
-
-        let mut preset_guids = Vec::with_capacity(preset_guid_count as usize);
-        let mut num_entries = MaybeUninit::uninit();
-        unsafe {
-            self.writer.get_encode_preset_guids(
-                codec,
-                preset_guids.as_mut_ptr(),
-                preset_guid_count,
-                num_entries.as_mut_ptr(),
-            )?;
-            preset_guids.set_len(num_entries.assume_init() as usize);
-        }
-        
-        let presets = preset_guids.iter().map(|guid| (*guid).into()).collect();
-        Ok(presets)
-    }
-
     /// Lists the supported input formats for a given codec.
     pub fn supported_input_formats(
         &self,
@@ -85,7 +64,7 @@ impl NvidiaEncoder {
         let codec = codec.into();
         let mut tmp = MaybeUninit::uninit();
         let input_format_count = unsafe {
-            self.writer
+            self.raw_encoder
                 .get_input_format_count(codec, tmp.as_mut_ptr())?;
             tmp.assume_init()
         };
@@ -93,7 +72,7 @@ impl NvidiaEncoder {
         let mut input_formats = Vec::with_capacity(input_format_count as usize);
         let mut num_entries = MaybeUninit::uninit();
         unsafe {
-            self.writer.get_input_formats(
+            self.raw_encoder.get_input_formats(
                 codec,
                 input_formats.as_mut_ptr(),
                 input_format_count,

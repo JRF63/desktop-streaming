@@ -3,6 +3,10 @@ name = "nvenc"
 version = "0.1.0"
 edition = "2021"
 
+[build-dependencies]
+regex = "1.6.0"
+lazy_static = "1.4.0"
+
 [dependencies]
 nvenc-sys = { path = "../nvenc-sys", features = ["v11_1"] }
 thiserror = "1.0.31"

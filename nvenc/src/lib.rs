@@ -10,4 +10,4 @@ pub type Result<T> = std::result::Result<T, NvEncError>;
 
 pub use encoder::create_encoder;
 pub use error::NvEncError;
-pub use settings::{Codec, CodecProfile, EncoderPreset, TuningInfo};
+pub use settings::{Codec, CodecProfile, EncodePreset, TuningInfo};

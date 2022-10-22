@@ -1,8 +1,12 @@
+// Codecs
+
 pub const NV_ENC_CODEC_H264_GUID: crate::sys::GUID =
     guid_from_u128(0x6BC82762_4E63_4ca4_AA85_1E50F321F6BF);
 
 pub const NV_ENC_CODEC_HEVC_GUID: crate::sys::GUID =
     guid_from_u128(0x790CDC88_4522_4d7b_9425_BDA9975F7603);
+
+// Codec profiles
 
 pub const NV_ENC_CODEC_PROFILE_AUTOSELECT_GUID: crate::sys::GUID =
     guid_from_u128(0xBFD6F8E7_233C_4341_8B3E_4818523803F4);
@@ -36,6 +40,42 @@ pub const NV_ENC_HEVC_PROFILE_MAIN10_GUID: crate::sys::GUID =
 
 pub const NV_ENC_HEVC_PROFILE_FREXT_GUID: crate::sys::GUID =
     guid_from_u128(0x51ec32b5_1b4c_453c_9cbd_b616bd621341);
+
+// Old presets
+
+pub const NV_ENC_PRESET_DEFAULT_GUID: crate::sys::GUID =
+    guid_from_u128(0xb2dfb705_4ebd_4c49_9b5f_24a777d3e587);
+
+pub const NV_ENC_PRESET_HP_GUID: crate::sys::GUID =
+    guid_from_u128(0x60e4c59f_e846_4484_a56d_cd45be9fddf6);
+
+pub const NV_ENC_PRESET_HQ_GUID: crate::sys::GUID =
+    guid_from_u128(0x34dba71d_a77b_4b8f_9c3e_b6d5da24c012);
+
+pub const NV_ENC_PRESET_BD_GUID: crate::sys::GUID =
+    guid_from_u128(0x82e3e450_bdbb_4e40_989c_82a90df9ef32);
+
+pub const NV_ENC_PRESET_LOW_LATENCY_DEFAULT_GUID: crate::sys::GUID =
+    guid_from_u128(0x49df21c5_6dfa_4feb_9787_6acc9effb726);
+
+pub const NV_ENC_PRESET_LOW_LATENCY_HQ_GUID: crate::sys::GUID =
+    guid_from_u128(0xc5f733b9_ea97_4cf9_bec2_bf78a74fd105);
+
+pub const NV_ENC_PRESET_LOW_LATENCY_HP_GUID: crate::sys::GUID =
+    guid_from_u128(0x67082a44_4bad_48fa_98ea_93056d150a58);
+
+pub const NV_ENC_PRESET_LOSSLESS_DEFAULT_GUID: crate::sys::GUID =
+    guid_from_u128(0xd5bfb716_c604_44e7_9bb8_dea5510fc3ac);
+
+pub const NV_ENC_PRESET_LOSSLESS_HP_GUID: crate::sys::GUID =
+    guid_from_u128(0x149998e7_2364_411d_82ef_179888093409);
+
+// Undocumented presets
+
+pub const NV_ENC_PRESET_STREAMING: crate::sys::GUID =
+    guid_from_u128(0x7add423d_d035_4f6f_aea5_50885658643c);
+
+// Performance/quality presets
 
 pub const NV_ENC_PRESET_P1_GUID: crate::sys::GUID =
     guid_from_u128(0xfc0a8d3e_45f8_4cf8_80c7_298871590ebf);

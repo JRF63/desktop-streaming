@@ -1,20 +1,21 @@
 mod buffer;
+mod builder;
 mod config;
 mod event;
 mod library;
 mod output;
-mod queries;
-mod raw;
+mod raw_encoder;
 mod shared;
+mod queries;
 
 use self::{
     config::EncoderParams,
+    event::{EventObject, EventObjectTrait},
     output::EncoderOutput,
-    raw::RawEncoder,
+    raw_encoder::RawEncoder,
     shared::{encoder_channel, NvidiaEncoderReader, NvidiaEncoderWriter},
-    event::{EventObject, EventObjectTrait}
 };
-use crate::{Codec, EncoderPreset, Result, TuningInfo};
+use crate::{Codec, EncodePreset, Result, TuningInfo};
 use std::{mem::MaybeUninit, ops::Deref};
 
 use windows::{
@@ -224,7 +225,7 @@ pub fn create_encoder(
     device: ID3D11Device,
     display_desc: &DXGI_OUTDUPL_DESC,
     codec: Codec,
-    preset: EncoderPreset,
+    preset: EncodePreset,
     tuning_info: TuningInfo,
 ) -> (NvidiaEncoder, EncoderOutput) {
     let mut device_context = None;
