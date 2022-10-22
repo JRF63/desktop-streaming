@@ -22,7 +22,7 @@ fn open_encode_session<T: NvEncDevice>(
             (functions.nvEncOpenEncodeSessionEx.unwrap())(&mut session_params, &mut raw_encoder);
         match NvEncError::from_nvenc_status(status) {
             // Should not fail if `nvEncOpenEncodeSessionEx` succeeded
-            None => NonNull::new(raw_encoder).ok_or(NvEncError::Generic),
+            None => NonNull::new(raw_encoder).ok_or(NvEncError::default()),
             Some(err) => Err(err),
         }
     }

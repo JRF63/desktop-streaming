@@ -119,7 +119,7 @@ where
 
     // Should not fail since `nvEncRegisterResource` succeeded
     let registered_resource =
-        NonNull::new(register_resource_params.registeredResource).ok_or(NvEncError::Generic)?;
+        NonNull::new(register_resource_params.registeredResource).ok_or(NvEncError::default())?;
 
     Ok(RegisteredResourceRAII {
         registered_resource,
@@ -154,7 +154,7 @@ fn create_output_buffer<'a>(raw_encoder: &'a RawEncoder) -> Result<OutputBufferR
 
     // Should not fail since `nvEncCreateBitstreamBuffer` succeeded
     let output_buffer =
-        NonNull::new(create_bitstream_buffer_params.bitstreamBuffer).ok_or(NvEncError::Generic)?;
+        NonNull::new(create_bitstream_buffer_params.bitstreamBuffer).ok_or(NvEncError::default())?;
     Ok(OutputBufferRAII {
         output_buffer,
         raw_encoder,

@@ -133,7 +133,7 @@ impl<T, const N: usize> CyclicBufferReader<T, N> {
 
 /// Tests if `num` is a power of two.
 const fn is_power_of_two(num: usize) -> bool {
-    num.count_ones() == 1
+    num == 0 || num.count_ones() == 1
 }
 
 #[cfg(test)]
