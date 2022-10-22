@@ -8,7 +8,7 @@ impl EventObjectTrait for EventObject {
         Ok(EventObject(()))
     }
 
-    fn wait(&self) -> crate::Result<()> {
+    fn wait(&self, _timeout_millis: u32) -> crate::Result<()> {
         Ok(())
     }
 

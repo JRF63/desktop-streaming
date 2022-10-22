@@ -14,7 +14,7 @@ pub use self::non_windows::EventObject;
 pub trait EventObjectTrait: Sized {
     fn new() -> Result<Self>;
 
-    fn wait(&self) -> Result<()>;
+    fn wait(&self, timeout_millis: u32) -> Result<()>;
 
     fn as_ptr(&self) -> *mut c_void;
 }

@@ -1,23 +1,35 @@
 #[cfg(windows)]
-use crate::os::windows::WindowsLibrary as LibraryImpl;
+mod windows;
+
+#[cfg(windows)]
+use self::windows::LibraryImpl;
 
 use crate::{NvEncError, Result};
 use std::mem::MaybeUninit;
+
+/// Helper trait that needs to be implemented by OS-specific library implementation. 
+trait LibraryImplTrait: Sized {
+    /// Filename of the .dll or .so
+    const LIBRARY_NAME: &'static str;
+
+    /// Checks if the library is signed.
+    fn is_library_signed(filename: &str) -> bool;
+
+    /// Load the library.
+    fn load(lib_name: &str) -> Result<Self>;
+
+    /// Extracts a function pointer from the library.
+    unsafe fn fn_ptr<T>(&self, fn_name: &str) -> Option<&T>;
+}
 
 pub struct NvidiaEncoderLibrary(LibraryImpl);
 
 impl NvidiaEncoderLibrary {
     pub fn load() -> Result<Self> {
-        #[cfg(windows)]
-        const LIBRARY_NAME: &'static str = "nvEncodeAPI64.dll";
-
-        if !LibraryImpl::is_library_signed(LIBRARY_NAME) {
+        if !LibraryImpl::is_library_signed(LibraryImpl::LIBRARY_NAME) {
             Err(NvEncError::LibraryNotSigned)
         } else {
-            match LibraryImpl::load(LIBRARY_NAME) {
-                Ok(lib) => Ok(NvidiaEncoderLibrary(lib)),
-                Err(_) => Err(NvEncError::LibraryLoadingFailed),
-            }
+            LibraryImpl::load(LibraryImpl::LIBRARY_NAME).map(|lib| NvidiaEncoderLibrary(lib))
         }
     }
 
@@ -29,34 +41,31 @@ impl NvidiaEncoderLibrary {
         const FN_NAME: &'static str = "NvEncodeAPIGetMaxSupportedVersion";
         type GetMaxSupportedVersion = unsafe extern "C" fn(*mut u32) -> crate::sys::NVENCSTATUS;
 
-        let get_max_supported_version: GetMaxSupportedVersion = unsafe {
-            let tmp = self
-                .as_inner()
+        let get_max_supported_version: &GetMaxSupportedVersion = unsafe {
+            self.as_inner()
                 .fn_ptr(FN_NAME)
-                .or(Err(NvEncError::GetMaxSupportedVersionLoadingFailed))?;
-            std::mem::transmute(tmp)
+                .ok_or(NvEncError::GetMaxSupportedVersionLoadingFailed)?
         };
 
         let mut version: u32 = 0;
         let status = unsafe { get_max_supported_version(&mut version) };
+
         match NvEncError::from_nvenc_status(status) {
             Some(err) => Err(err),
             None => Ok(version),
         }
     }
 
-    pub fn create_instance(&self) -> Result<crate::sys::NV_ENCODE_API_FUNCTION_LIST> {
+    pub fn get_function_list(&self) -> Result<crate::sys::NV_ENCODE_API_FUNCTION_LIST> {
         const FN_NAME: &'static str = "NvEncodeAPICreateInstance";
         type CreateInstance = unsafe extern "C" fn(
             *mut crate::sys::NV_ENCODE_API_FUNCTION_LIST,
         ) -> crate::sys::NVENCSTATUS;
 
-        let create_instance: CreateInstance = unsafe {
-            let tmp = self
-                .as_inner()
+        let create_instance: &CreateInstance = unsafe {
+            self.as_inner()
                 .fn_ptr(FN_NAME)
-                .or(Err(NvEncError::CreateInstanceLoadingFailed))?;
-            std::mem::transmute(tmp)
+                .ok_or(NvEncError::CreateInstanceLoadingFailed)?
         };
 
         unsafe {
@@ -64,7 +73,9 @@ impl NvidiaEncoderLibrary {
                 MaybeUninit::zeroed().assume_init();
             // The version needs to be set or the API will return an error
             fn_list.version = crate::sys::NV_ENCODE_API_FUNCTION_LIST_VER;
+
             let status = create_instance(&mut fn_list);
+
             match NvEncError::from_nvenc_status(status) {
                 Some(err) => Err(err),
                 None => Ok(fn_list),

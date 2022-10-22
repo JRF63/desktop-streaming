@@ -1,10 +1,12 @@
+use super::LibraryImplTrait;
+use crate::{NvEncError, Result};
 use std::{
-    ffi::{CString, OsStr, OsString},
+    ffi::{OsStr, OsString},
     num::NonZeroIsize,
     os::windows::ffi::{OsStrExt, OsStringExt},
 };
 use windows::{
-    core::{Error, GUID, PCSTR, PCWSTR, PWSTR},
+    core::{Error, GUID, PCWSTR, PWSTR},
     Win32::{
         Foundation::{HANDLE, HINSTANCE},
         Security::WinTrust::{
@@ -24,9 +26,9 @@ use windows::{
 /// RAII wrapper for a Windows library HANDLE.
 // NOTE: This is a `Send` since a `HANDLE` is `Send`
 #[repr(transparent)]
-pub struct WindowsLibrary(NonZeroIsize);
+pub struct LibraryImpl(NonZeroIsize);
 
-impl Drop for WindowsLibrary {
+impl Drop for LibraryImpl {
     fn drop(&mut self) {
         unsafe {
             // Deliberately ignoring failure
@@ -35,46 +37,14 @@ impl Drop for WindowsLibrary {
     }
 }
 
-impl WindowsLibrary {
-    /// Open a .dll from C:\Windows\System32 without verification if it's signed
-    pub fn load(lib_name: &str) -> windows::core::Result<Self> {
-        let lib_name = CString::new(lib_name).unwrap();
-
-        let lib = unsafe {
-            LoadLibraryExA(
-                PCSTR(lib_name.as_ptr() as *const u8),
-                None,
-                LOAD_LIBRARY_SEARCH_SYSTEM32,
-            )?
-        };
-        // SAFETY: `LoadLibraryExA` returns a non-null pointer on success
-        let nonzero = unsafe { NonZeroIsize::new_unchecked(lib.0) };
-        Ok(WindowsLibrary(nonzero))
-    }
-
-    /// Cast `Library` to HINSTANCE for FFI.
-    fn as_inner(&self) -> HINSTANCE {
-        HINSTANCE(self.0.get())
-    }
-
-    /// Extracts the function pointer from the library. The returned function pointer is bound to
-    /// the lifetime `&self`.
-    pub unsafe fn fn_ptr(
-        &self,
-        fn_name: &str,
-    ) -> windows::core::Result<unsafe extern "system" fn() -> isize> {
-        let fn_name = CString::new(fn_name).unwrap();
-        match GetProcAddress(self.as_inner(), PCSTR(fn_name.as_ptr() as *const u8)) {
-            Some(ptr) => Ok(ptr),
-            None => Err(windows::core::Error::from_win32()),
-        }
-    }
+impl LibraryImplTrait for LibraryImpl {
+    const LIBRARY_NAME: &'static str = "nvEncodeAPI64.dll";
 
     /// Checks if the library is signed. This is different from passing the
     /// `LOAD_LIBRARY_REQUIRE_SIGNED_TARGET` flag to `LoadLibraryExA`.
     // Translated into Rust from:
     // https://docs.microsoft.com/en-us/windows/win32/seccrypto/example-c-program--verifying-the-signature-of-a-pe-file
-    pub fn is_library_signed(filename: &str) -> bool {
+    fn is_library_signed(filename: &str) -> bool {
         let mut path = get_system32_dir();
         path.push('\\');
         path.push_str(filename);
@@ -104,7 +74,7 @@ impl WindowsLibrary {
             },
             dwStateAction: WTD_STATEACTION_VERIFY,
             hWVTStateData: HANDLE(0),
-            pwszURLReference: PWSTR(std::ptr::null_mut()),
+            pwszURLReference: PWSTR::default(),
             dwProvFlags: WTD_REVOCATION_CHECK_CHAIN,
             dwUIContext: WINTRUST_DATA_UICONTEXT(0),
             pSignatureSettings: std::ptr::null_mut(),
@@ -128,6 +98,30 @@ impl WindowsLibrary {
             );
         };
         verified
+    }
+
+    /// Open a .dll from C:\Windows\System32 without verification if it's signed or not.
+    fn load(lib_name: &str) -> Result<Self> {
+        let lib = unsafe {
+            LoadLibraryExA(lib_name, None, LOAD_LIBRARY_SEARCH_SYSTEM32)
+                .map_err(|_| NvEncError::LibraryLoadingFailed)?
+        };
+        // SAFETY: `LoadLibraryExA` returns a non-null pointer on success
+        let nonzero = unsafe { NonZeroIsize::new_unchecked(lib.0) };
+        Ok(LibraryImpl(nonzero))
+    }
+
+    /// Extracts a function pointer from the library. The returned function pointer is bound to
+    /// the lifetime `&self`.
+    unsafe fn fn_ptr<T>(&self, fn_name: &str) -> Option<&T> {
+        GetProcAddress(self.as_inner(), fn_name).map(|ptr| &*(ptr as *const T))
+    }
+}
+
+impl LibraryImpl {
+    /// Cast `Library` to HINSTANCE for FFI.
+    fn as_inner(&self) -> HINSTANCE {
+        HINSTANCE(self.0.get())
     }
 }
 
@@ -172,9 +166,11 @@ fn get_system32_dir() -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn library_loading() {
-        assert!(super::WindowsLibrary::is_library_signed("nvEncodeAPI64.dll") == true);
-        super::WindowsLibrary::load("nvEncodeAPI64.dll").unwrap();
+        assert!(LibraryImpl::is_library_signed("nvEncodeAPI64.dll") == true);
+        LibraryImpl::load("nvEncodeAPI64.dll").unwrap();
     }
 }

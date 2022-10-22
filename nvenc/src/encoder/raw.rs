@@ -120,7 +120,7 @@ impl RawEncoder {
             return Err(NvEncError::UnsupportedVersion);
         }
 
-        let functions = library.create_instance()?;
+        let functions = library.get_function_list()?;
         if !is_function_list_valid(&functions) {
             return Err(NvEncError::MalformedFunctionList);
         }

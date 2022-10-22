@@ -15,8 +15,9 @@ impl EncoderOutput {
         &self,
         mut consume_output: F,
     ) -> Result<()> {
+        const TIMEOUT_INTERVAL_MS: u32 = 1000; // Wait for 1 sec
         self.reader.read(|buffer| -> Result<()> {
-            buffer.event_obj.wait()?;
+            buffer.event_obj.wait(TIMEOUT_INTERVAL_MS)?;
 
             if buffer.end_of_stream {
                 return Err(NvEncError::EndOfStream);

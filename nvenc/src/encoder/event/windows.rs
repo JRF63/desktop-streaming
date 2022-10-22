@@ -23,11 +23,10 @@ impl EventObjectTrait for EventObject {
         }
     }
 
-    fn wait(&self) -> Result<()> {
-        const TIMEOUT_INTERVAL_MS: u32 = 1000; // Wait for 1 sec
+    fn wait(&self, timeout_millis: u32) -> Result<()> {
         const WAIT_TIMEOUT: u32 = windows::Win32::Foundation::WAIT_TIMEOUT.0;
 
-        match unsafe { WaitForSingleObject(self.0, TIMEOUT_INTERVAL_MS) } {
+        match unsafe { WaitForSingleObject(self.0, timeout_millis) } {
             WAIT_OBJECT_0 => Ok(()),
             WAIT_TIMEOUT => Err(NvEncError::EventObjectWaitTimeout),
             _ => Err(NvEncError::EventObjectWaitError),
