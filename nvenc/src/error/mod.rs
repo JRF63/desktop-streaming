@@ -21,8 +21,11 @@ pub enum NvEncError {
     UnsupportedVersion,
     #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
     MalformedFunctionList,
-    #[error("Input has signaled end of stream")]
-    EndOfStream,
+
+    #[error("`NvEncRegisterResource` requires the pitch paramter for OpenGL and CUDA resources.")]
+    RegisterResourceMissingPitch,
+    #[error("`NvEncRegisterResource` requires a sub-resource index for DirectX resources.")]
+    RegisterResourceMissingSubresourceIndex,
 
     #[error("Could not create a Windows event object")]
     EventObjectCreationFailed,
@@ -30,6 +33,9 @@ pub enum NvEncError {
     EventObjectWaitError,
     #[error("Event timed-out while waiting")]
     EventObjectWaitTimeout,
+
+    #[error("Input has signaled end of stream")]
+    EndOfStream,
 }
 
 impl Default for NvEncError {

@@ -15,21 +15,21 @@ trait LibraryImplTrait: Sized {
     /// Checks if the library is signed.
     fn is_library_signed(filename: &str) -> bool;
 
-    /// Load the library.
+    /// Load an instance of the library.
     fn load(lib_name: &str) -> Result<Self>;
 
     /// Extracts a function pointer from the library.
     unsafe fn fn_ptr<T>(&self, fn_name: &str) -> Option<T>;
 }
 
-pub struct NvidiaEncoderLibrary(LibraryImpl);
+pub struct Library(LibraryImpl);
 
-impl NvidiaEncoderLibrary {
+impl Library {
     pub fn load() -> Result<Self> {
         if !LibraryImpl::is_library_signed(LibraryImpl::LIBRARY_NAME) {
             Err(NvEncError::LibraryNotSigned)
         } else {
-            LibraryImpl::load(LibraryImpl::LIBRARY_NAME).map(|lib| NvidiaEncoderLibrary(lib))
+            LibraryImpl::load(LibraryImpl::LIBRARY_NAME).map(|lib| Library(lib))
         }
     }
 

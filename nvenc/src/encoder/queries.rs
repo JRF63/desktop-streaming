@@ -52,6 +52,7 @@ impl NvidiaEncoder {
         Ok(codec_profiles)
     }
 
+    /// Lists the encode presets available for a codec.
     pub fn encode_presets(&self, codec: Codec) -> Result<Vec<EncodePreset>> {
         let codec = codec.into();
         let preset_guid_count = unsafe {

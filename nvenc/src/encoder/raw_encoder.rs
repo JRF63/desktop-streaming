@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::library::NvidiaEncoderLibrary;
+use super::library::Library;
 use crate::{util::NvEncDevice, NvEncError, Result};
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
 
@@ -95,7 +95,7 @@ fn is_function_list_valid(functions: &crate::sys::NV_ENCODE_API_FUNCTION_LIST) -
 pub struct RawEncoder {
     encoder_ptr: NonNull<c_void>,
     functions: crate::sys::NV_ENCODE_API_FUNCTION_LIST,
-    library: NvidiaEncoderLibrary,
+    library: Library,
 }
 
 // SAFETY: The struct members would not be invalidated by being moved to another thread.
@@ -115,7 +115,7 @@ impl Drop for RawEncoder {
 
 impl RawEncoder {
     pub fn new<T: NvEncDevice>(device: &T) -> Result<Self> {
-        let library = NvidiaEncoderLibrary::load()?;
+        let library = Library::load()?;
         if !is_version_supported(library.get_max_supported_version()?) {
             return Err(NvEncError::UnsupportedVersion);
         }

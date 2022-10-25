@@ -1,12 +1,14 @@
 mod buffer;
 mod builder;
 mod config;
+mod device;
 mod event;
 mod library;
 mod output;
 mod raw_encoder;
 mod shared;
 mod queries;
+mod texture;
 
 use self::{
     config::EncoderParams,
