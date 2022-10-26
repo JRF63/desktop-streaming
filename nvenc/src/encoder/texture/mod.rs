@@ -1,8 +1,11 @@
 #[cfg(windows)]
 mod windows;
 
-use std::ffi::c_void;
+#[cfg(windows)]
+pub use ::windows::Win32::Graphics::Direct3D11::ID3D11Texture2D as Texture;
+
 use crate::Result;
+use std::ffi::c_void;
 
 pub trait IntoNvEncBufferFormat {
     fn into_nvenc_buffer_format(&self) -> crate::sys::NV_ENC_BUFFER_FORMAT;

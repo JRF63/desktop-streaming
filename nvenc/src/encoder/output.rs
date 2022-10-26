@@ -1,13 +1,13 @@
-use super::{EventObjectTrait, NvidiaEncoderReader, ENCODER_BUFFER_SIZE};
+use super::{EventObjectTrait, NvidiaEncoderReader};
 use crate::{NvEncError, Result};
 use std::mem::MaybeUninit;
 
 pub struct EncoderOutput {
-    reader: NvidiaEncoderReader<ENCODER_BUFFER_SIZE>,
+    reader: NvidiaEncoderReader,
 }
 
 impl EncoderOutput {
-    pub fn new(reader: NvidiaEncoderReader<ENCODER_BUFFER_SIZE>) -> Self {
+    pub fn new(reader: NvidiaEncoderReader) -> Self {
         EncoderOutput { reader }
     }
 

@@ -1,14 +1,97 @@
-use super::raw_encoder::RawEncoder;
-use crate::{Codec, CodecProfile, EncodePreset, Result};
+use super::{device::DeviceImplTrait, library::Library, raw_encoder_v2::RawEncoder};
+use crate::{Codec, CodecProfile, EncodePreset, NvEncError, Result};
 use std::mem::MaybeUninit;
 
-pub struct EncoderBuilder {
-    raw_encoder: RawEncoder,
+/// Checks if the user's NvEncAPI version is supported.
+fn is_version_supported(version: u32) -> bool {
+    // TODO: Change this logic once older versions (9.0 to 10.0) are supported
+    let major_version = version >> 4;
+    let minor_version = version & 0b1111;
+    if major_version >= crate::sys::NVENCAPI_MAJOR_VERSION
+        && minor_version >= crate::sys::NVENCAPI_MINOR_VERSION
+    {
+        true
+    } else {
+        false
+    }
 }
 
-impl EncoderBuilder {
+pub struct EncoderBuilder<D>
+where
+    D: DeviceImplTrait,
+{
+    device: D,
+    raw_encoder: RawEncoder,
+    max_supported_version: u32,
+    codec: Option<Codec>,
+    codec_profile: Option<CodecProfile>,
+    encode_preset: Option<EncodePreset>,
+}
+
+impl<D> EncoderBuilder<D>
+where
+    D: DeviceImplTrait,
+{
+    pub fn new(device: D) -> Result<Self> {
+        let library = Library::load()?;
+
+        let max_supported_version = library.get_max_supported_version()?;
+
+        if !is_version_supported(max_supported_version) {
+            return Err(NvEncError::UnsupportedVersion);
+        }
+
+        let raw_encoder = RawEncoder::new(&device, library)?;
+
+        Ok(EncoderBuilder {
+            device,
+            raw_encoder,
+            max_supported_version,
+            codec: None,
+            codec_profile: None,
+            encode_preset: None,
+        })
+    }
+
+    pub fn with_codec(&mut self, codec: Codec) -> Result<&mut Self> {
+        if self.supported_codecs()?.contains(&codec) {
+            self.codec = Some(codec);
+            Ok(self)
+        } else {
+            Err(NvEncError::UnsupportedCodec)
+        }
+    }
+
+    pub fn with_codec_profile(&mut self, codec_profile: CodecProfile) -> Result<&mut Self> {
+        if self
+            .supported_codec_profiles(self.codec.ok_or(NvEncError::CodecNotSet)?)?
+            .contains(&codec_profile)
+        {
+            self.codec_profile = Some(codec_profile);
+            Ok(self)
+        } else {
+            Err(NvEncError::CodecProfileNotSupported)
+        }
+    }
+
+    pub fn with_encode_preset(&mut self, encode_preset: EncodePreset) -> Result<&mut Self> {
+        if self
+            .supported_encode_presets(self.codec.ok_or(NvEncError::CodecNotSet)?)?
+            .contains(&encode_preset)
+        {
+            self.encode_preset = Some(encode_preset);
+            Ok(self)
+        } else {
+            Err(NvEncError::CodecProfileNotSupported)
+        }
+    }
+
+    pub fn build(self) {
+        todo!()
+    }
+
     /// List all supported codecs (H.264, HEVC, etc.).
-    pub fn codecs(&self) -> Result<Vec<Codec>> {
+    pub fn supported_codecs(&self) -> Result<Vec<Codec>> {
         let codec_guid_count = unsafe {
             let mut tmp = MaybeUninit::uninit();
             self.raw_encoder.get_encode_guid_count(tmp.as_mut_ptr())?;
@@ -31,7 +114,7 @@ impl EncoderBuilder {
     }
 
     /// Lists the profiles available for a codec.
-    pub fn codec_profiles(&self, codec: Codec) -> Result<Vec<CodecProfile>> {
+    pub fn supported_codec_profiles(&self, codec: Codec) -> Result<Vec<CodecProfile>> {
         let codec = codec.into();
         let profile_guid_count = unsafe {
             let mut tmp = MaybeUninit::uninit();
@@ -57,7 +140,7 @@ impl EncoderBuilder {
     }
 
     /// Lists the encode presets available for a codec.
-    pub fn encode_presets(&self, codec: Codec) -> Result<Vec<EncodePreset>> {
+    pub fn supported_encode_presets(&self, codec: Codec) -> Result<Vec<EncodePreset>> {
         let codec = codec.into();
         let preset_guid_count = unsafe {
             let mut tmp = MaybeUninit::uninit();

@@ -9,6 +9,8 @@ pub enum NvEncError {
     #[error("{}", error_strings::nvenc_status_to_str(.0))]
     Sys(crate::sys::NVENCSTATUS),
 
+    // TODO: Maybe split these into separate enums
+
     #[error("The shared library for `nvEncodeAPI64` is not signed and may have been tampered.")]
     LibraryNotSigned,
     #[error("Loading the shared library for `nvEncodeAPI64` failed.")]
@@ -22,10 +24,19 @@ pub enum NvEncError {
     #[error("`NvEncodeAPICreateInstance` returned a malformed function list.")]
     MalformedFunctionList,
 
+    #[error("The encoder for the current device does not support the codec")]
+    UnsupportedCodec,
+    #[error("Codec needs to be set first")]
+    CodecNotSet,
+    #[error("The encoder does not support the given codec profile for the current codec")]
+    CodecProfileNotSupported,
+
     #[error("`NvEncRegisterResource` requires the pitch paramter for OpenGL and CUDA resources.")]
     RegisterResourceMissingPitch,
     #[error("`NvEncRegisterResource` requires a sub-resource index for DirectX resources.")]
     RegisterResourceMissingSubresourceIndex,
+    #[error("Failed creating a texture buffer")]
+    TextureBufferCreationFailed,
 
     #[error("Could not create a Windows event object")]
     EventObjectCreationFailed,

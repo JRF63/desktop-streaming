@@ -2,7 +2,7 @@ mod guids;
 
 pub use guids::*;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Codec {
     H264,
@@ -30,7 +30,7 @@ impl From<crate::sys::GUID> for Codec {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum CodecProfile {
     Autoselect,
@@ -94,7 +94,7 @@ impl From<crate::sys::GUID> for CodecProfile {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum EncodePreset {
     DefaultPreset,
@@ -182,7 +182,7 @@ impl From<crate::sys::GUID> for EncodePreset {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum TuningInfo {
     Undefined,

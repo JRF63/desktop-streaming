@@ -89,7 +89,8 @@ impl EncoderParams {
         let codec_config = &mut preset_config_params.presetCfg;
         match codec {
             Codec::H264 => {
-                let h264_config = unsafe { &mut codec_config.encodeCodecConfig.h264Config };
+                let h264_config =
+                    unsafe { &mut codec_config.encodeCodecConfig.h264Config.as_mut() };
 
                 // SPS/PPS would be manually given to the decoder
                 h264_config.set_disableSPSPPS(1);
@@ -110,7 +111,8 @@ impl EncoderParams {
                 }
             }
             Codec::Hevc => {
-                let hevc_config = unsafe { &mut codec_config.encodeCodecConfig.hevcConfig };
+                let hevc_config =
+                    unsafe { &mut codec_config.encodeCodecConfig.hevcConfig.as_mut() };
 
                 // VPS/SPS/PPS would be manually given to the decoder
                 hevc_config.set_disableSPSPPS(1);

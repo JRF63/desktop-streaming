@@ -1,14 +1,18 @@
 mod buffer;
 mod builder;
+mod config_v2;
 mod config;
 mod device;
+mod encoder_input;
 mod event;
 mod library;
 mod output;
 mod raw_encoder;
+mod raw_encoder_v2;
 mod shared;
-mod queries;
 mod texture;
+
+pub use builder::EncoderBuilder;
 
 use self::{
     config::EncoderParams,
@@ -30,11 +34,8 @@ use windows::{
 
 use crate::os::windows::create_texture_buffer;
 
-/// Size of the ring buffer that is shared between the input and output
-const ENCODER_BUFFER_SIZE: usize = 8;
-
 pub struct NvidiaEncoder {
-    writer: NvidiaEncoderWriter<ENCODER_BUFFER_SIZE>,
+    writer: NvidiaEncoderWriter,
     device_context: ID3D11DeviceContext,
     buffer_texture: ID3D11Texture2D,
     encode_pic_params: crate::sys::NV_ENC_PIC_PARAMS,
@@ -49,7 +50,7 @@ impl Drop for NvidiaEncoder {
 
 impl NvidiaEncoder {
     pub fn new(
-        writer: NvidiaEncoderWriter<ENCODER_BUFFER_SIZE>,
+        writer: NvidiaEncoderWriter,
         device_context: ID3D11DeviceContext,
         buffer_texture: ID3D11Texture2D,
         encoder_params: EncoderParams,
@@ -61,7 +62,7 @@ impl NvidiaEncoder {
             tmp.inputWidth = encoder_params.init_params().encodeWidth;
             tmp.inputHeight = encoder_params.init_params().encodeHeight;
             tmp.inputPitch = tmp.inputWidth;
-            tmp.bufferFmt = encoder_params.init_params().bufferFormat;
+            tmp.bufferFmt = encoder_params.init_params().bufferFormat.clone();
             tmp.pictureStruct = crate::sys::NV_ENC_PIC_STRUCT::NV_ENC_PIC_STRUCT_FRAME;
             tmp
         };
@@ -235,7 +236,7 @@ pub fn create_encoder(
         device.GetImmediateContext(&mut device_context);
     }
 
-    let buffer_texture = create_texture_buffer(&device, display_desc, ENCODER_BUFFER_SIZE).unwrap();
+    let buffer_texture = create_texture_buffer(&device, display_desc, shared::ENCODER_BUFFER_SIZE).unwrap();
 
     let ((writer, reader), encoder_params) = encoder_channel(
         &device,

@@ -1,11 +1,15 @@
 use super::{IntoNvEncBufferFormat, TextureImplTrait};
 use crate::{NvEncError, Result};
+use std::ffi::c_void;
 use std::mem::MaybeUninit;
-use windows::Win32::Graphics::{
-    Direct3D11::ID3D11Texture2D,
-    Dxgi::Common::{
-        DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R10G10B10A2_UNORM,
-        DXGI_FORMAT_R8G8B8A8_UNORM,
+use windows::{
+    core::Interface,
+    Win32::Graphics::{
+        Direct3D11::ID3D11Texture2D,
+        Dxgi::Common::{
+            DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R10G10B10A2_UNORM,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+        },
     },
 };
 
@@ -16,8 +20,8 @@ impl TextureImplTrait for ID3D11Texture2D {
         crate::sys::NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX
     }
 
-    fn as_ptr(&self) -> *mut std::os::raw::c_void {
-        unsafe { std::mem::transmute(self.clone()) }
+    fn as_ptr(&self) -> *mut c_void {
+        self.as_raw()
     }
 
     fn description(&self) -> (u32, u32, Self::TextureFormat) {

@@ -10,12 +10,15 @@ use sync::{CyclicBuffer, CyclicBufferReader, CyclicBufferWriter};
 
 use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_DESC;
 
-struct NvidiaEncoderShared<const N: usize> {
+/// Size of the ring buffer that is shared between the input and output
+pub const ENCODER_BUFFER_SIZE: usize = 8;
+
+struct NvidiaEncoderShared {
     raw_encoder: RawEncoder,
-    buffer: CyclicBuffer<NvidiaEncoderBufferItems, N>,
+    buffer: CyclicBuffer<NvidiaEncoderBufferItems, ENCODER_BUFFER_SIZE>,
 }
 
-impl<const N: usize> Drop for NvidiaEncoderShared<N> {
+impl Drop for NvidiaEncoderShared {
     fn drop(&mut self) {
         for buffer in self.buffer.get_mut() {
             buffer.get_mut().cleanup(&self.raw_encoder);
@@ -23,7 +26,7 @@ impl<const N: usize> Drop for NvidiaEncoderShared<N> {
     }
 }
 
-pub fn encoder_channel<const N: usize, D, T>(
+pub fn encoder_channel<D, T>(
     device: &D,
     display_desc: &DXGI_OUTDUPL_DESC,
     buffer_texture: &T,
@@ -31,7 +34,7 @@ pub fn encoder_channel<const N: usize, D, T>(
     preset: EncodePreset,
     tuning_info: TuningInfo,
 ) -> Result<(
-    (NvidiaEncoderWriter<N>, NvidiaEncoderReader<N>),
+    (NvidiaEncoderWriter, NvidiaEncoderReader),
     EncoderParams,
 )>
 where
@@ -48,12 +51,12 @@ where
     }
 
     let buffer = unsafe {
-        let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; N]>::uninit();
+        let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; ENCODER_BUFFER_SIZE]>::uninit();
 
         // Pointer to the start of the array's buffer
         let mut ptr = (&mut *buffer.as_mut_ptr()).as_mut_ptr();
 
-        for i in 0..N {
+        for i in 0..ENCODER_BUFFER_SIZE {
             ptr.write(NvidiaEncoderBufferItems::new(
                 &raw_encoder,
                 buffer_texture,
@@ -75,13 +78,13 @@ where
 }
 
 #[repr(transparent)]
-pub struct NvidiaEncoderWriter<const N: usize>(Arc<NvidiaEncoderShared<N>>);
+pub struct NvidiaEncoderWriter(Arc<NvidiaEncoderShared>);
 
 // Writes to `NvidiaEncoderWriter` are synchronized with reads from `NvidiaEncoderReader` but only
 // if there is exactly one reader and one writer
-unsafe impl<const N: usize> Send for NvidiaEncoderWriter<N> {}
+unsafe impl Send for NvidiaEncoderWriter {}
 
-impl<const N: usize> NvidiaEncoderWriter<N> {
+impl NvidiaEncoderWriter {
     /// Modify an item on the buffer. Blocks if the buffer is full.
     #[inline]
     pub fn write<F, S, R>(&self, args: S, write_op: F) -> R
@@ -94,13 +97,13 @@ impl<const N: usize> NvidiaEncoderWriter<N> {
 }
 
 #[repr(transparent)]
-pub struct NvidiaEncoderReader<const N: usize>(Arc<NvidiaEncoderShared<N>>);
+pub struct NvidiaEncoderReader(Arc<NvidiaEncoderShared>);
 
 // Reads to `NvidiaEncoderReader` are synchronized with writes from `NvidiaEncoderWriter` but only
 // if there is exactly one reader and one writer
-unsafe impl<const N: usize> Send for NvidiaEncoderReader<N> {}
+unsafe impl Send for NvidiaEncoderReader {}
 
-impl<const N: usize> NvidiaEncoderReader<N> {
+impl NvidiaEncoderReader {
     /// Read an item on the buffer. Blocks if the buffer is empty.
     #[inline]
     pub fn read<F, R>(&self, read_op: F) -> R
@@ -114,7 +117,7 @@ impl<const N: usize> NvidiaEncoderReader<N> {
 
 // TODO: Limit what methods are available to `NvidiaEncoderWriter` instead of blanket enabling
 // all methods of `RawEncoder`
-impl<const N: usize> Deref for NvidiaEncoderWriter<N> {
+impl Deref for NvidiaEncoderWriter {
     type Target = RawEncoder;
 
     fn deref(&self) -> &Self::Target {
@@ -123,7 +126,7 @@ impl<const N: usize> Deref for NvidiaEncoderWriter<N> {
 }
 
 // TODO: Ditto `NvidiaEncoderWriter`'s `Deref`
-impl<const N: usize> Deref for NvidiaEncoderReader<N> {
+impl Deref for NvidiaEncoderReader {
     type Target = RawEncoder;
 
     fn deref(&self) -> &Self::Target {
