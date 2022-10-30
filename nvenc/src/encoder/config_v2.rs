@@ -1,20 +1,25 @@
-use super::RawEncoder;
-use crate::{Codec, EncodePreset, Result, TuningInfo};
-use std::mem::MaybeUninit;
+use super::raw_encoder_v2::RawEncoder;
+use crate::{Codec, CodecProfile, EncodePreset, Result, TuningInfo};
+use std::{mem::MaybeUninit, ptr::addr_of_mut};
 
 #[repr(transparent)]
-pub struct EncoderParams(crate::sys::NV_ENC_RECONFIGURE_PARAMS);
+pub struct EncodeParams(crate::sys::NV_ENC_RECONFIGURE_PARAMS);
 
-impl Drop for EncoderParams {
+impl Drop for EncodeParams {
     fn drop(&mut self) {
         let ptr = self.0.reInitEncodeParams.encodeConfig;
+        debug_assert!(
+            !ptr.is_null(),
+            "reInitEncodeParams.encodeConfig should not be null"
+        );
+
         // SAFETY: The pointer was allocated by `Box::new` inside `get_codec_config_for_preset`
         let boxed = unsafe { Box::from_raw(ptr) };
         std::mem::drop(boxed);
     }
 }
 
-impl EncoderParams {
+impl EncodeParams {
     pub fn new(
         raw_encoder: &RawEncoder,
         width: u32,
@@ -22,6 +27,7 @@ impl EncoderParams {
         display_aspect_ratio: Option<(u32, u32)>,
         refresh_rate_ratio: (u32, u32),
         codec: Codec,
+        profile: CodecProfile,
         preset: EncodePreset,
         tuning_info: TuningInfo,
     ) -> Result<Self> {
@@ -62,25 +68,33 @@ impl EncoderParams {
             // init_params.bufferFormat = ...;
         }
 
-        let codec_config = get_codec_config_for_preset(raw_encoder, codec, preset, tuning_info)?;
+        let codec_config = build_encode_config(raw_encoder, codec, profile, preset, tuning_info)?;
 
         init_params.encodeConfig = Box::into_raw(codec_config);
 
-        Ok(EncoderParams(reconfig_params))
+        Ok(EncodeParams(reconfig_params))
+    }
+
+    pub fn initializer(&mut self) -> &mut crate::sys::NV_ENC_INITIALIZE_PARAMS {
+        &mut self.0.reInitEncodeParams
     }
 
     pub fn set_average_bitrate(&mut self, bitrate: u32) {
-        self.encode_config_mut().rcParams.averageBitRate = bitrate
-    }
+        let ptr = self.0.reInitEncodeParams.encodeConfig;
+        debug_assert!(
+            !ptr.is_null(),
+            "reInitEncodeParams.encodeConfig should not be null"
+        );
 
-    fn encode_config_mut(&mut self) -> &mut crate::sys::NV_ENC_CONFIG {
-        unsafe { &mut *self.0.reInitEncodeParams.encodeConfig }
+        let encoder_config = unsafe { &mut *ptr };
+        encoder_config.rcParams.averageBitRate = bitrate
     }
 }
 
-fn get_codec_config_for_preset(
+fn build_encode_config(
     raw_encoder: &RawEncoder,
     codec: Codec,
+    profile: CodecProfile,
     preset: EncodePreset,
     tuning_info: TuningInfo,
 ) -> Result<Box<crate::sys::NV_ENC_CONFIG>> {
@@ -88,24 +102,26 @@ fn get_codec_config_for_preset(
     let preset_guid = preset.into();
     let mut preset_config_params = unsafe {
         let mut tmp: MaybeUninit<crate::sys::NV_ENC_PRESET_CONFIG> = MaybeUninit::zeroed();
-        let mut_ref = &mut *tmp.as_mut_ptr();
 
-        mut_ref.version = crate::sys::NV_ENC_PRESET_CONFIG_VER;
-        mut_ref.presetCfg.version = crate::sys::NV_ENC_CONFIG_VER;
+        let ptr = tmp.as_mut_ptr();
 
+        addr_of_mut!((*ptr).version).write(crate::sys::NV_ENC_PRESET_CONFIG_VER);
+        addr_of_mut!((*ptr).presetCfg.version).write(crate::sys::NV_ENC_CONFIG_VER);
+        addr_of_mut!((*ptr).presetCfg.profileGUID).write(profile.into());
         raw_encoder.get_encode_preset_config_ex(
             encode_guid,
             preset_guid,
             tuning_info.into(),
-            tmp.as_mut_ptr(),
+            ptr,
         )?;
         tmp.assume_init()
     };
 
-    let codec_config = &mut preset_config_params.presetCfg;
+    let codec_config = &mut preset_config_params.presetCfg.encodeCodecConfig;
+
     match codec {
         Codec::H264 => {
-            let h264_config = unsafe { &mut codec_config.encodeCodecConfig.h264Config.as_mut() };
+            let h264_config = unsafe { &mut codec_config.h264Config.as_mut() };
 
             // SPS/PPS would be manually given to the decoder
             h264_config.set_disableSPSPPS(1);
@@ -126,7 +142,7 @@ fn get_codec_config_for_preset(
             }
         }
         Codec::Hevc => {
-            let hevc_config = unsafe { &mut codec_config.encodeCodecConfig.hevcConfig.as_mut() };
+            let hevc_config = unsafe { &mut codec_config.hevcConfig.as_mut() };
 
             // VPS/SPS/PPS would be manually given to the decoder
             hevc_config.set_disableSPSPPS(1);

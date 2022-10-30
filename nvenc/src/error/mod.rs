@@ -30,6 +30,8 @@ pub enum NvEncError {
     CodecNotSet,
     #[error("The encoder does not support the given codec profile for the current codec")]
     CodecProfileNotSupported,
+    #[error("Encode preset is needed to build the encoder")]
+    EncodePresetNotSet,
 
     #[error("`NvEncRegisterResource` requires the pitch paramter for OpenGL and CUDA resources.")]
     RegisterResourceMissingPitch,

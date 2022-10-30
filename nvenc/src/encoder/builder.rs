@@ -1,5 +1,7 @@
-use super::{device::DeviceImplTrait, library::Library, raw_encoder_v2::RawEncoder};
-use crate::{Codec, CodecProfile, EncodePreset, NvEncError, Result};
+use super::{
+    config_v2::EncodeParams, device::DeviceImplTrait, library::Library, raw_encoder_v2::RawEncoder,
+};
+use crate::{Codec, CodecProfile, EncodePreset, NvEncError, Result, TuningInfo};
 use std::mem::MaybeUninit;
 
 /// Checks if the user's NvEncAPI version is supported.
@@ -24,8 +26,9 @@ where
     raw_encoder: RawEncoder,
     max_supported_version: u32,
     codec: Option<Codec>,
-    codec_profile: Option<CodecProfile>,
-    encode_preset: Option<EncodePreset>,
+    profile: CodecProfile,
+    preset: Option<EncodePreset>,
+    tuning_info: TuningInfo,
 }
 
 impl<D> EncoderBuilder<D>
@@ -48,8 +51,9 @@ where
             raw_encoder,
             max_supported_version,
             codec: None,
-            codec_profile: None,
-            encode_preset: None,
+            profile: CodecProfile::Autoselect,
+            preset: None,
+            tuning_info: TuningInfo::Undefined,
         })
     }
 
@@ -62,31 +66,58 @@ where
         }
     }
 
-    pub fn with_codec_profile(&mut self, codec_profile: CodecProfile) -> Result<&mut Self> {
+    pub fn with_codec_profile(&mut self, profile: CodecProfile) -> Result<&mut Self> {
         if self
             .supported_codec_profiles(self.codec.ok_or(NvEncError::CodecNotSet)?)?
-            .contains(&codec_profile)
+            .contains(&profile)
         {
-            self.codec_profile = Some(codec_profile);
+            self.profile = profile;
             Ok(self)
         } else {
             Err(NvEncError::CodecProfileNotSupported)
         }
     }
 
-    pub fn with_encode_preset(&mut self, encode_preset: EncodePreset) -> Result<&mut Self> {
+    pub fn with_encode_preset(&mut self, preset: EncodePreset) -> Result<&mut Self> {
         if self
             .supported_encode_presets(self.codec.ok_or(NvEncError::CodecNotSet)?)?
-            .contains(&encode_preset)
+            .contains(&preset)
         {
-            self.encode_preset = Some(encode_preset);
+            self.preset = Some(preset);
             Ok(self)
         } else {
             Err(NvEncError::CodecProfileNotSupported)
         }
     }
 
-    pub fn build(self) {
+    pub fn build(
+        self,
+        width: u32,
+        height: u32,
+        display_aspect_ratio: Option<(u32, u32)>,
+        refresh_rate_ratio: (u32, u32),
+    ) -> Result<()> {
+        let codec = self.codec.ok_or(NvEncError::CodecNotSet)?;
+        let profile = self.profile;
+        let preset = self.preset.ok_or(NvEncError::EncodePresetNotSet)?;
+        let tuning_info = self.tuning_info;
+
+        let mut encode_params = EncodeParams::new(
+            &self.raw_encoder,
+            width,
+            height,
+            display_aspect_ratio,
+            refresh_rate_ratio,
+            codec,
+            profile,
+            preset,
+            tuning_info,
+        )?;
+
+        unsafe {
+            self.raw_encoder.initialize_encoder(encode_params.initializer())?;
+        }
+        
         todo!()
     }
 
