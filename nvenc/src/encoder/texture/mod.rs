@@ -26,6 +26,8 @@ pub trait TextureBufferImplTrait {
     type Texture: TextureImplTrait;
     type TextureFormat: IntoNvEncBufferFormat;
 
+    fn texture_format(&self) -> Self::TextureFormat;
+
     fn get_texture(&self, index: usize) -> &Self::Texture;
 
     fn get_pitch_or_subresource_index(&self, index: usize) -> u32;

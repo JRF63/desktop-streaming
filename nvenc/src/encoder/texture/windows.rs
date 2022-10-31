@@ -77,6 +77,15 @@ impl TextureBufferImplTrait for ID3D11Texture2D {
     type Texture = ID3D11Texture2D;
     type TextureFormat = DXGI_FORMAT;
 
+    fn texture_format(&self) -> Self::TextureFormat {
+        let texture_desc = unsafe {
+            let mut tmp = MaybeUninit::uninit();
+            self.GetDesc(tmp.as_mut_ptr());
+            tmp.assume_init()
+        };
+        texture_desc.Format
+    }
+
     fn get_texture(&self, _index: usize) -> &Self::Texture {
         self
     }

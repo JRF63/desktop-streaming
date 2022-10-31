@@ -4,7 +4,7 @@ use super::{
     event::EventObjectTrait,
     raw_encoder::RawEncoder,
     shared::NvidiaEncoderWriter,
-    texture::{TextureBufferImplTrait, TextureImplTrait},
+    texture::{IntoNvEncBufferFormat, TextureBufferImplTrait},
 };
 use crate::Result;
 use std::{mem::MaybeUninit, ops::Deref};
@@ -13,8 +13,8 @@ pub struct EncoderInput<D: DeviceImplTrait> {
     device: D,
     writer: NvidiaEncoderWriter,
     texture_buffer: <D as DeviceImplTrait>::Buffer,
-    encode_pic_params: crate::sys::NV_ENC_PIC_PARAMS,
     encode_params: EncodeParams,
+    encode_pic_params: crate::sys::NV_ENC_PIC_PARAMS,
 }
 
 impl<D: DeviceImplTrait> Drop for EncoderInput<D> {
@@ -37,10 +37,7 @@ impl<D: DeviceImplTrait> EncoderInput<D> {
             tmp.inputWidth = encode_params.encode_width();
             tmp.inputHeight = encode_params.encode_height();
             tmp.inputPitch = tmp.inputWidth;
-            tmp.bufferFmt = texture_buffer
-                .get_texture(0)
-                .build_register_resource_args(0)?
-                .bufferFormat;
+            tmp.bufferFmt = texture_buffer.texture_format().into_nvenc_buffer_format();
             tmp.pictureStruct = crate::sys::NV_ENC_PIC_STRUCT::NV_ENC_PIC_STRUCT_FRAME;
             tmp
         };
@@ -49,8 +46,8 @@ impl<D: DeviceImplTrait> EncoderInput<D> {
             device,
             writer,
             texture_buffer,
-            encode_pic_params,
             encode_params,
+            encode_pic_params,
         })
     }
 
@@ -129,8 +126,7 @@ impl<D: DeviceImplTrait> EncoderInput<D> {
     }
 }
 
-/// Does not seem to function as a sync barrier. Texture copy only syncs on call to
-/// `nvEncEncodePicture` if async encode is enabled.
+/// Helper function for creating a `NV_ENC_MAP_INPUT_RESOURCE` from a `NV_ENC_REGISTERED_PTR`.
 fn map_input(
     raw_encoder: &RawEncoder,
     registered_resource: crate::sys::NV_ENC_REGISTERED_PTR,

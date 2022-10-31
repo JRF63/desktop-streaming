@@ -151,8 +151,8 @@ fn main() {
             .unwrap();
     }
 
-    // std::mem::drop(encoder);
-    // a.join().unwrap();
+    std::mem::drop(encoder);
+    a.join().unwrap();
 }
 
 fn print_stats(deltas: &[u64]) {
