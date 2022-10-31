@@ -12,8 +12,6 @@ pub trait IntoNvEncBufferFormat {
 }
 
 pub trait TextureImplTrait {
-    type TextureFormat: IntoNvEncBufferFormat;
-
     fn resource_type() -> crate::sys::NV_ENC_INPUT_RESOURCE_TYPE;
 
     fn as_ptr(&self) -> *mut c_void;
@@ -26,6 +24,7 @@ pub trait TextureImplTrait {
 
 pub trait TextureBufferImplTrait {
     type Texture: TextureImplTrait;
+    type TextureFormat: IntoNvEncBufferFormat;
 
     fn get_texture(&self, index: usize) -> &Self::Texture;
 

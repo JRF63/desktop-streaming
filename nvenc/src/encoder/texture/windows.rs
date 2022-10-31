@@ -31,8 +31,6 @@ impl IntoNvEncBufferFormat for DXGI_FORMAT {
 }
 
 impl TextureImplTrait for ID3D11Texture2D {
-    type TextureFormat = DXGI_FORMAT;
-
     fn resource_type() -> crate::sys::NV_ENC_INPUT_RESOURCE_TYPE {
         crate::sys::NV_ENC_INPUT_RESOURCE_TYPE::NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX
     }
@@ -77,6 +75,7 @@ impl TextureImplTrait for ID3D11Texture2D {
 
 impl TextureBufferImplTrait for ID3D11Texture2D {
     type Texture = ID3D11Texture2D;
+    type TextureFormat = DXGI_FORMAT;
 
     fn get_texture(&self, _index: usize) -> &Self::Texture {
         self

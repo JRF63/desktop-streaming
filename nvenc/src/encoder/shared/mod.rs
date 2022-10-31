@@ -1,7 +1,7 @@
 mod sync;
 
 use super::{
-    buffer::NvidiaEncoderBufferItems, builder::BUFFER_SIZE, raw_encoder::RawEncoder,
+    buffer_items::EncoderBufferItems, builder::BUFFER_SIZE, raw_encoder::RawEncoder,
     texture::TextureBufferImplTrait,
 };
 use crate::Result;
@@ -10,7 +10,7 @@ use sync::{CyclicBuffer, CyclicBufferReader, CyclicBufferWriter};
 
 struct NvidiaEncoderShared {
     raw_encoder: RawEncoder,
-    buffer: CyclicBuffer<NvidiaEncoderBufferItems, BUFFER_SIZE>,
+    buffer: CyclicBuffer<EncoderBufferItems, BUFFER_SIZE>,
 }
 
 impl Drop for NvidiaEncoderShared {
@@ -21,7 +21,7 @@ impl Drop for NvidiaEncoderShared {
     }
 }
 
-pub fn encoder_channel_v2<T>(
+pub fn encoder_channel<T>(
     raw_encoder: RawEncoder,
     texture_buffer: &T,
 ) -> Result<(NvidiaEncoderWriter, NvidiaEncoderReader)>
@@ -29,13 +29,13 @@ where
     T: TextureBufferImplTrait,
 {
     let buffer = unsafe {
-        let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; BUFFER_SIZE]>::uninit();
+        let mut buffer = MaybeUninit::<[EncoderBufferItems; BUFFER_SIZE]>::uninit();
 
         // Pointer to the start of the array's buffer
         let mut ptr = (&mut *buffer.as_mut_ptr()).as_mut_ptr();
 
         for i in 0..BUFFER_SIZE {
-            ptr.write(NvidiaEncoderBufferItems::new(
+            ptr.write(EncoderBufferItems::new(
                 &raw_encoder,
                 texture_buffer.get_texture(i),
                 texture_buffer.get_pitch_or_subresource_index(i),
@@ -67,7 +67,7 @@ impl NvidiaEncoderWriter {
     #[inline]
     pub fn write<F, S, R>(&self, args: S, write_op: F) -> R
     where
-        F: FnMut(usize, &mut NvidiaEncoderBufferItems, S) -> R,
+        F: FnMut(usize, &mut EncoderBufferItems, S) -> R,
     {
         let writer = unsafe { CyclicBufferWriter::from_shared_buffer(&self.0.buffer) };
         writer.write(args, write_op)
@@ -86,7 +86,7 @@ impl NvidiaEncoderReader {
     #[inline]
     pub fn read<F, R>(&self, read_op: F) -> R
     where
-        F: FnMut(&NvidiaEncoderBufferItems) -> R,
+        F: FnMut(&EncoderBufferItems) -> R,
     {
         let reader = unsafe { CyclicBufferReader::from_shared_buffer(&self.0.buffer) };
         reader.read(read_op)

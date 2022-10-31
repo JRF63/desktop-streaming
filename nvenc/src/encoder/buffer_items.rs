@@ -10,7 +10,7 @@ use std::{
     ptr::NonNull,
 };
 
-pub struct NvidiaEncoderBufferItems {
+pub struct EncoderBufferItems {
     pub registered_resource: NonNull<c_void>,
     pub mapped_input: crate::sys::NV_ENC_INPUT_PTR,
     pub output_buffer: NonNull<c_void>,
@@ -21,9 +21,9 @@ pub struct NvidiaEncoderBufferItems {
 // SAFETY: All of the struct members are pointers or pointer-like objects (`HANDLE` for the Event)
 // managed by either the OS or the NvEnc API. `Send`ing them across threads would not invalidate
 // them.
-unsafe impl Send for NvidiaEncoderBufferItems {}
+unsafe impl Send for EncoderBufferItems {}
 
-impl NvidiaEncoderBufferItems {
+impl EncoderBufferItems {
     pub fn new<T>(
         raw_encoder: &RawEncoder,
         texture: &T,
@@ -51,7 +51,7 @@ impl NvidiaEncoderBufferItems {
         };
         let _ = ManuallyDrop::new(registered_async);
 
-        Ok(NvidiaEncoderBufferItems {
+        Ok(EncoderBufferItems {
             registered_resource,
             mapped_input: std::ptr::null_mut(),
             output_buffer,

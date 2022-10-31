@@ -1,4 +1,4 @@
-use super::raw_encoder::RawEncoder;
+use super::{raw_encoder::RawEncoder, texture::IntoNvEncBufferFormat};
 use crate::{Codec, CodecProfile, EncodePreset, Result, TuningInfo};
 use std::{mem::MaybeUninit, ptr::addr_of_mut};
 
@@ -20,16 +20,18 @@ impl Drop for EncodeParams {
 }
 
 impl EncodeParams {
-    pub fn new(
+    pub fn new<T: IntoNvEncBufferFormat>(
         raw_encoder: &RawEncoder,
         width: u32,
         height: u32,
         display_aspect_ratio: Option<(u32, u32)>,
         refresh_rate_ratio: (u32, u32),
+        texture_format: &T,
         codec: Codec,
         profile: CodecProfile,
         preset: EncodePreset,
         tuning_info: TuningInfo,
+        extra_options: &ExtraOptions,
     ) -> Result<Self> {
         let mut reconfig_params: crate::sys::NV_ENC_RECONFIGURE_PARAMS =
             unsafe { MaybeUninit::zeroed().assume_init() };
@@ -68,7 +70,15 @@ impl EncodeParams {
             // init_params.bufferFormat = ...;
         }
 
-        let codec_config = build_encode_config(raw_encoder, codec, profile, preset, tuning_info)?;
+        let codec_config = build_encode_config(
+            raw_encoder,
+            texture_format,
+            codec,
+            profile,
+            preset,
+            tuning_info,
+            extra_options,
+        )?;
 
         init_params.encodeConfig = Box::into_raw(codec_config);
 
@@ -101,12 +111,14 @@ impl EncodeParams {
     }
 }
 
-fn build_encode_config(
+fn build_encode_config<T: IntoNvEncBufferFormat>(
     raw_encoder: &RawEncoder,
+    texture_format: &T,
     codec: Codec,
     profile: CodecProfile,
     preset: EncodePreset,
     tuning_info: TuningInfo,
+    extra_options: &ExtraOptions,
 ) -> Result<Box<crate::sys::NV_ENC_CONFIG>> {
     let encode_guid = codec.into();
     let preset_guid = preset.into();
@@ -133,8 +145,10 @@ fn build_encode_config(
         Codec::H264 => {
             let h264_config = unsafe { &mut codec_config.h264Config.as_mut() };
 
-            // SPS/PPS would be manually given to the decoder
-            h264_config.set_disableSPSPPS(1);
+            let nvenc_format = texture_format.into_nvenc_buffer_format();
+            h264_config.chromaFormatIDC = chroma_format_idc(&nvenc_format);
+
+            extra_options.modify_h264(h264_config);
 
             // https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
             // Settings for optimal performance when using
@@ -154,8 +168,11 @@ fn build_encode_config(
         Codec::Hevc => {
             let hevc_config = unsafe { &mut codec_config.hevcConfig.as_mut() };
 
-            // VPS/SPS/PPS would be manually given to the decoder
-            hevc_config.set_disableSPSPPS(1);
+            let nvenc_format = texture_format.into_nvenc_buffer_format();
+            hevc_config.set_chromaFormatIDC(chroma_format_idc(&nvenc_format));
+            hevc_config.set_pixelBitDepthMinus8(pixel_bit_depth_minus_8(&nvenc_format));
+
+            extra_options.modify_hevc(hevc_config);
 
             // Same settings needed for `AcquireNextFrame`
             #[cfg(windows)]
@@ -170,4 +187,68 @@ fn build_encode_config(
     }
 
     Ok(Box::new(preset_config_params.presetCfg))
+}
+
+pub struct ExtraOptions {
+    inband_csd_disabled: bool,
+    csd_should_repeat: bool,
+}
+
+impl Default for ExtraOptions {
+    fn default() -> Self {
+        Self {
+            inband_csd_disabled: false,
+            csd_should_repeat: false,
+        }
+    }
+}
+
+impl ExtraOptions {
+    pub(crate) fn disable_inband_csd(&mut self) {
+        self.inband_csd_disabled = true;
+    }
+
+    pub(crate) fn repeat_csd(&mut self) {
+        self.csd_should_repeat = true;
+    }
+
+    fn modify_h264(&self, h264_config: &mut crate::sys::NV_ENC_CONFIG_H264) {
+        if self.inband_csd_disabled {
+            h264_config.set_disableSPSPPS(1);
+        }
+        if self.csd_should_repeat {
+            h264_config.set_repeatSPSPPS(1);
+        }
+    }
+
+    fn modify_hevc(&self, hevc_config: &mut crate::sys::NV_ENC_CONFIG_HEVC) {
+        if self.inband_csd_disabled {
+            hevc_config.set_disableSPSPPS(1);
+        }
+        if self.csd_should_repeat {
+            hevc_config.set_repeatSPSPPS(1);
+        }
+    }
+}
+
+fn pixel_bit_depth_minus_8(nvenc_format: &crate::sys::NV_ENC_BUFFER_FORMAT) -> u32 {
+    match nvenc_format {
+        crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV420_10BIT
+        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV444_10BIT
+        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ARGB10
+        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ABGR10 => 2,
+        _ => 0,
+    }
+}
+
+fn chroma_format_idc(nvenc_format: &crate::sys::NV_ENC_BUFFER_FORMAT) -> u32 {
+    // Contrary to the header that says YUV420 should have chromaFormatIDC = 1, the video SDK
+    // sample only changes the chromaFormatIDC for YUV444 and YUV444_10BIT:
+    //
+    // https://github.com/NVIDIA/video-sdk-samples/blob/aa3544dcea2fe63122e4feb83bf805ea40e58dbe/nvEncBroadcastSample/nvEnc/nvCodec/nvEncoder/NvEncoder.cpp#L189
+    match nvenc_format {
+        crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV444
+        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV444_10BIT => 3,
+        _ => 0,
+    }
 }

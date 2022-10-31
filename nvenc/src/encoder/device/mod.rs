@@ -2,7 +2,7 @@
 mod windows;
 
 #[cfg(windows)]
-pub use self::windows::DirectXDevice as Device;
+pub use self::windows::DirectX11Device as Device;
 
 use super::texture::{TextureImplTrait, TextureBufferImplTrait};
 use crate::Result;
@@ -28,7 +28,7 @@ pub trait DeviceImplTrait {
         &self,
         width: u32,
         height: u32,
-        texture_format: <Self::Texture as TextureImplTrait>::TextureFormat,
+        texture_format: <Self::Buffer as TextureBufferImplTrait>::TextureFormat,
         buf_size: u32,
     ) -> Result<Self::Buffer>;
 

@@ -1,12 +1,12 @@
 use super::{
-    config::EncodeParams,
+    config::{EncodeParams, ExtraOptions},
     device::{DeviceImplTrait, IntoDevice},
     encoder_input::EncoderInput,
     encoder_output::EncoderOutput,
     library::Library,
     raw_encoder::RawEncoder,
-    shared::encoder_channel_v2,
-    texture::TextureImplTrait,
+    shared::encoder_channel,
+    texture::TextureBufferImplTrait,
 };
 use crate::{Codec, CodecProfile, EncodePreset, NvEncError, Result, TuningInfo};
 use std::mem::MaybeUninit;
@@ -39,6 +39,7 @@ where
     profile: CodecProfile,
     preset: Option<EncodePreset>,
     tuning_info: TuningInfo,
+    extra_options: ExtraOptions,
 }
 
 impl<D> EncoderBuilder<D>
@@ -65,6 +66,7 @@ where
             profile: CodecProfile::Autoselect,
             preset: None,
             tuning_info: TuningInfo::Undefined,
+            extra_options: ExtraOptions::default(),
         })
     }
 
@@ -106,11 +108,23 @@ where
         Ok(self)
     }
 
+    /// Disable writing SPS/PPS (H.264) or VPS/SPS/PPS (HEVC) in the bitstream.
+    pub fn disable_inband_csd(&mut self) -> Result<&mut Self> {
+        self.extra_options.disable_inband_csd();
+        Ok(self)
+    }
+
+    /// Enable writing SPS/PPS (H.264) or VPS/SPS/PPS (HEVC) every IDR frame.
+    pub fn repeat_csd(&mut self) -> Result<&mut Self> {
+        self.extra_options.repeat_csd();
+        Ok(self)
+    }
+
     pub fn build(
         self,
         width: u32,
         height: u32,
-        texture_format: <D::Texture as TextureImplTrait>::TextureFormat,
+        texture_format: <D::Buffer as TextureBufferImplTrait>::TextureFormat,
         display_aspect_ratio: Option<(u32, u32)>,
         refresh_rate_ratio: (u32, u32),
     ) -> Result<(EncoderInput<D>, EncoderOutput)> {
@@ -125,10 +139,12 @@ where
             height,
             display_aspect_ratio,
             refresh_rate_ratio,
+            &texture_format,
             codec,
             profile,
             preset,
             tuning_info,
+            &self.extra_options,
         )?;
 
         encode_params.initialize_encoder(&self.raw_encoder)?;
@@ -137,7 +153,7 @@ where
             self.device
                 .create_texture_buffer(width, height, texture_format, BUFFER_SIZE as u32)?;
 
-        let (writer, reader) = encoder_channel_v2(self.raw_encoder, &texture_buffer)?;
+        let (writer, reader) = encoder_channel(self.raw_encoder, &texture_buffer)?;
 
         let encoder_input = EncoderInput::new(self.device, writer, texture_buffer, encode_params)?;
         let encoder_output = EncoderOutput::new(reader);

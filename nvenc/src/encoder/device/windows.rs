@@ -1,4 +1,4 @@
-use super::{DeviceImplTrait, TextureImplTrait, IntoDevice};
+use super::{DeviceImplTrait, TextureBufferImplTrait, IntoDevice};
 use crate::{NvEncError, Result};
 use windows::{
     core::Interface,
@@ -12,12 +12,12 @@ use windows::{
     },
 };
 
-pub struct DirectXDevice {
+pub struct DirectX11Device {
     device: ID3D11Device,
     immediate_context: ID3D11DeviceContext,
 }
 
-impl DeviceImplTrait for DirectXDevice {
+impl DeviceImplTrait for DirectX11Device {
     type Buffer = ID3D11Texture2D;
     type Texture = ID3D11Texture2D;
 
@@ -33,7 +33,7 @@ impl DeviceImplTrait for DirectXDevice {
         &self,
         width: u32,
         height: u32,
-        texture_format: <Self::Texture as TextureImplTrait>::TextureFormat,
+        texture_format: <Self::Buffer as TextureBufferImplTrait>::TextureFormat,
         buf_size: u32,
     ) -> Result<Self::Texture> {
         let texture_desc = D3D11_TEXTURE2D_DESC {
@@ -89,14 +89,14 @@ impl DeviceImplTrait for DirectXDevice {
 }
 
 impl IntoDevice for ID3D11Device {
-    type Device = DirectXDevice;
+    type Device = DirectX11Device;
 
     fn into_device(self) -> Self::Device {
         let mut immediate_context = None;
         unsafe {
             self.GetImmediateContext(&mut immediate_context);
         }
-        DirectXDevice {
+        DirectX11Device {
             device: self,
             immediate_context: immediate_context.unwrap(),
         }
