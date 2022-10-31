@@ -246,9 +246,13 @@ fn chroma_format_idc(nvenc_format: &crate::sys::NV_ENC_BUFFER_FORMAT) -> u32 {
     // sample only changes the chromaFormatIDC for YUV444 and YUV444_10BIT:
     //
     // https://github.com/NVIDIA/video-sdk-samples/blob/aa3544dcea2fe63122e4feb83bf805ea40e58dbe/nvEncBroadcastSample/nvEnc/nvCodec/nvEncoder/NvEncoder.cpp#L189
+    //
+    // What should be done is to set chromaFormatIDC to 3 for YUV444 and to 1 otherwise (even for
+    // non-YUV formats like RGB). Calls to `NvEncGetEncodePresetConfigEx` automatically sets
+    // chromaFormatIDC to 1 so *perhaps* zero is not a valid value for chromaFormatIDC.
     match nvenc_format {
         crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV444
         | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV444_10BIT => 3,
-        _ => 0,
+        _ => 1,
     }
 }
