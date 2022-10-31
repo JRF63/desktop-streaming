@@ -65,12 +65,12 @@ unsafe impl Send for NvidiaEncoderWriter {}
 impl NvidiaEncoderWriter {
     /// Modify an item on the buffer. Blocks if the buffer is full.
     #[inline]
-    pub fn write<F, S, R>(&self, args: S, write_op: F) -> R
+    pub fn write<F, R>(&self, write_op: F) -> R
     where
-        F: FnMut(usize, &mut EncoderBufferItems, S) -> R,
+        F: FnOnce(usize, &mut EncoderBufferItems) -> R,
     {
         let writer = unsafe { CyclicBufferWriter::from_shared_buffer(&self.0.buffer) };
-        writer.write(args, write_op)
+        writer.write(write_op)
     }
 }
 
@@ -86,7 +86,7 @@ impl NvidiaEncoderReader {
     #[inline]
     pub fn read<F, R>(&self, read_op: F) -> R
     where
-        F: FnMut(&EncoderBufferItems) -> R,
+        F: FnOnce(&EncoderBufferItems) -> R,
     {
         let reader = unsafe { CyclicBufferReader::from_shared_buffer(&self.0.buffer) };
         reader.read(read_op)

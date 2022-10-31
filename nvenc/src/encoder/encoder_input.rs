@@ -79,26 +79,23 @@ impl<D: DeviceImplTrait> EncoderInput<D> {
 
     pub fn encode_frame<F>(
         &mut self,
-        frame: <D as DeviceImplTrait>::Texture,
+        texture: <D as DeviceImplTrait>::Texture,
         timestamp: u64,
         mut post_copy_op: F,
     ) -> Result<()>
     where
         F: FnMut(),
     {
-        let pic_params = &mut self.encode_pic_params;
-        let device = &self.device;
-        let input_textures = &self.texture_buffer;
-        let raw_encoder: &RawEncoder = self.writer.deref();
-
-        self.writer.write(frame, |index, buffer, frame| {
-            device.copy_texture(input_textures, &frame, index);
+        self.writer.write(|index, buffer| {
+            self.device
+                .copy_texture(&self.texture_buffer, texture, index);
             post_copy_op();
 
-            buffer.mapped_input = map_input(raw_encoder, buffer.registered_resource.as_ptr())?;
-            pic_params.inputBuffer = buffer.mapped_input;
-            pic_params.outputBitstream = buffer.output_buffer.as_ptr();
-            pic_params.completionEvent = buffer.event_obj.as_ptr();
+            buffer.mapped_input =
+                map_input(self.writer.deref(), buffer.registered_resource.as_ptr())?;
+            self.encode_pic_params.inputBuffer = buffer.mapped_input;
+            self.encode_pic_params.outputBitstream = buffer.output_buffer.as_ptr();
+            self.encode_pic_params.completionEvent = buffer.event_obj.as_ptr();
             Ok(())
         })?;
 
@@ -115,7 +112,7 @@ impl<D: DeviceImplTrait> EncoderInput<D> {
     fn end_encode(&mut self) -> Result<()> {
         let pic_params = &mut self.encode_pic_params;
 
-        self.writer.write((), |_, buffer, ()| {
+        self.writer.write(|_, buffer| {
             buffer.end_of_stream = true;
             pic_params.inputBuffer = std::ptr::null_mut();
             pic_params.outputBitstream = std::ptr::null_mut();

@@ -64,9 +64,9 @@ impl<T, const N: usize> CyclicBufferWriter<T, N> {
 
     /// Modify an item on the buffer. Blocks if the buffer is full.
     #[inline]
-    pub fn write<F, S, R>(&self, args: S, mut write_op: F) -> R
+    pub fn write<F, R>(&self, write_op: F) -> R
     where
-        F: FnMut(usize, &mut T, S) -> R,
+        F: FnOnce(usize, &mut T) -> R,
     {
         // Needs to synchronize-with the `store` below since this might be moved to another thread
         let head = self.0.head.load(Ordering::Acquire);
@@ -84,7 +84,7 @@ impl<T, const N: usize> CyclicBufferWriter<T, N> {
         let index = head & (N - 1);
         let result = unsafe {
             let cell = self.0.buffer.get_unchecked(index);
-            write_op(index, &mut *cell.get(), args)
+            write_op(index, &mut *cell.get())
         };
 
         self.0.head.store(head.wrapping_add(1), Ordering::Release);
@@ -103,9 +103,9 @@ impl<T, const N: usize> CyclicBufferReader<T, N> {
 
     /// Read an item on the buffer. Blocks if the buffer is empty.
     #[inline]
-    pub fn read<F, R>(&self, mut read_op: F) -> R
+    pub fn read<F, R>(&self, read_op: F) -> R
     where
-        F: FnMut(&T) -> R,
+        F: FnOnce(&T) -> R,
     {
         // Needs to synchronize-with the `store` below since this might be moved to another thread
         let tail = self.0.tail.load(Ordering::Acquire);
@@ -181,7 +181,7 @@ mod tests {
                 let writer = writer;
                 let writer = unsafe { CyclicBufferWriter::from_shared_buffer(&writer.0) };
                 for i in 0..ITERS {
-                    writer.write((), |_i, val, ()| {
+                    writer.write(|_i, val| {
                         *val = i;
                     });
                 }

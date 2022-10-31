@@ -69,7 +69,7 @@ impl DeviceImplTrait for DirectX11Device {
     fn copy_texture(
         &self,
         buffer: &Self::Texture,
-        texture: &Self::Texture,
+        texture: Self::Texture,
         subresource_index: usize,
     ) {
         // SAFETY: Windows API call

@@ -36,7 +36,7 @@ pub trait DeviceImplTrait {
     fn copy_texture(
         &self,
         buffer: &Self::Buffer,
-        texture: &Self::Texture,
+        texture: Self::Texture,
         subresource_index: usize,
     );
 }
