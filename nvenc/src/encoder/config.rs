@@ -120,35 +120,38 @@ fn build_encode_config<T: IntoNvEncBufferFormat>(
     tuning_info: TuningInfo,
     extra_options: &ExtraOptions,
 ) -> Result<Box<crate::sys::NV_ENC_CONFIG>> {
-    let encode_guid = codec.into();
-    let preset_guid = preset.into();
-    let mut preset_config_params = unsafe {
+    let mut encode_config = unsafe {
         let mut tmp: MaybeUninit<crate::sys::NV_ENC_PRESET_CONFIG> = MaybeUninit::zeroed();
 
         let ptr = tmp.as_mut_ptr();
 
         addr_of_mut!((*ptr).version).write(crate::sys::NV_ENC_PRESET_CONFIG_VER);
         addr_of_mut!((*ptr).presetCfg.version).write(crate::sys::NV_ENC_CONFIG_VER);
-        addr_of_mut!((*ptr).presetCfg.profileGUID).write(profile.into());
         raw_encoder.get_encode_preset_config_ex(
-            encode_guid,
-            preset_guid,
+            codec.into(),
+            preset.into(),
             tuning_info.into(),
             ptr,
         )?;
-        tmp.assume_init()
+        tmp.assume_init().presetCfg
     };
 
-    let codec_config = &mut preset_config_params.presetCfg.encodeCodecConfig;
+    // Need to set the profile after `NvEncGetEncodePresetConfigEx` because it will get wiped
+    // otherwise.
+    encode_config.profileGUID = profile.into();
+
+    extra_options.modify_encode_config(&mut encode_config);
+
+    let codec_config = &mut encode_config.encodeCodecConfig;
 
     match codec {
         Codec::H264 => {
             let h264_config = unsafe { &mut codec_config.h264Config.as_mut() };
 
+            extra_options.modify_h264_encode_config(h264_config);
+
             let nvenc_format = texture_format.into_nvenc_buffer_format();
             h264_config.chromaFormatIDC = chroma_format_idc(&nvenc_format);
-
-            extra_options.modify_h264(h264_config);
 
             // https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-video-encoder-api-prog-guide/
             // Settings for optimal performance when using
@@ -168,11 +171,11 @@ fn build_encode_config<T: IntoNvEncBufferFormat>(
         Codec::Hevc => {
             let hevc_config = unsafe { &mut codec_config.hevcConfig.as_mut() };
 
+            extra_options.modify_hevc_encode_config(hevc_config);
+
             let nvenc_format = texture_format.into_nvenc_buffer_format();
             hevc_config.set_chromaFormatIDC(chroma_format_idc(&nvenc_format));
             hevc_config.set_pixelBitDepthMinus8(pixel_bit_depth_minus_8(&nvenc_format));
-
-            extra_options.modify_hevc(hevc_config);
 
             // Same settings needed for `AcquireNextFrame`
             #[cfg(windows)]
@@ -186,12 +189,13 @@ fn build_encode_config<T: IntoNvEncBufferFormat>(
         }
     }
 
-    Ok(Box::new(preset_config_params.presetCfg))
+    Ok(Box::new(encode_config))
 }
 
 pub struct ExtraOptions {
     inband_csd_disabled: bool,
     csd_should_repeat: bool,
+    spatial_sq_enabled: bool,
 }
 
 impl Default for ExtraOptions {
@@ -199,6 +203,7 @@ impl Default for ExtraOptions {
         Self {
             inband_csd_disabled: false,
             csd_should_repeat: false,
+            spatial_sq_enabled: false,
         }
     }
 }
@@ -212,7 +217,17 @@ impl ExtraOptions {
         self.csd_should_repeat = true;
     }
 
-    fn modify_h264(&self, h264_config: &mut crate::sys::NV_ENC_CONFIG_H264) {
+    pub(crate) fn enable_spatial_aq(&mut self) {
+        self.spatial_sq_enabled = true;
+    }
+
+    fn modify_encode_config(&self, config: &mut crate::sys::NV_ENC_CONFIG) {
+        if self.spatial_sq_enabled {
+            config.rcParams.set_enableAQ(1);
+        }
+    }
+
+    fn modify_h264_encode_config(&self, h264_config: &mut crate::sys::NV_ENC_CONFIG_H264) {
         if self.inband_csd_disabled {
             h264_config.set_disableSPSPPS(1);
         }
@@ -221,7 +236,7 @@ impl ExtraOptions {
         }
     }
 
-    fn modify_hevc(&self, hevc_config: &mut crate::sys::NV_ENC_CONFIG_HEVC) {
+    fn modify_hevc_encode_config(&self, hevc_config: &mut crate::sys::NV_ENC_CONFIG_HEVC) {
         if self.inband_csd_disabled {
             hevc_config.set_disableSPSPPS(1);
         }

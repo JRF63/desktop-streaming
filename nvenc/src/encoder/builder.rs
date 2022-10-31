@@ -120,6 +120,12 @@ where
         Ok(self)
     }
 
+    /// Enable spatial adaptive quantization.
+    pub fn enable_spatial_aq(&mut self) -> Result<&mut Self> {
+        self.extra_options.enable_spatial_aq();
+        Ok(self)
+    }
+
     pub fn build(
         self,
         width: u32,
