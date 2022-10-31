@@ -4,11 +4,10 @@ mod settings;
 mod sys;
 mod util;
 
-pub mod os;
-
 pub type Result<T> = std::result::Result<T, NvEncError>;
 
-pub use encoder::EncoderBuilder;
-pub use encoder::create_encoder;
-pub use error::NvEncError;
-pub use settings::{Codec, CodecProfile, EncodePreset, TuningInfo};
+pub use self::{
+    encoder::{Device, EncoderBuilder, EncoderInput, EncoderOutput, IntoDevice},
+    error::NvEncError,
+    settings::{Codec, CodecProfile, EncodePreset, TuningInfo},
+};

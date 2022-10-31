@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use super::library::Library;
-use crate::{util::NvEncDevice, NvEncError, Result};
+use super::{device::DeviceImplTrait, library::Library};
+use crate::{NvEncError, Result};
 use std::{mem::MaybeUninit, os::raw::c_void, ptr::NonNull};
 
 /// Start an encoding session.
-fn open_encode_session<T: NvEncDevice>(
+fn open_encode_session<T: DeviceImplTrait>(
     functions: &crate::sys::NV_ENCODE_API_FUNCTION_LIST,
     device: &T,
 ) -> Result<NonNull<c_void>> {
@@ -18,27 +18,16 @@ fn open_encode_session<T: NvEncDevice>(
         session_params.device = device.as_ptr();
         session_params.apiVersion = crate::sys::NVENCAPI_VERSION;
 
-        let status =
-            (functions.nvEncOpenEncodeSessionEx.unwrap())(&mut session_params, &mut raw_encoder);
+        let status = (functions.nvEncOpenEncodeSessionEx.unwrap_unchecked())(
+            &mut session_params,
+            &mut raw_encoder,
+        );
+
+        // Should not fail if `nvEncOpenEncodeSessionEx` succeeded
         match NvEncError::from_nvenc_status(status) {
-            // Should not fail if `nvEncOpenEncodeSessionEx` succeeded
             None => NonNull::new(raw_encoder).ok_or(NvEncError::default()),
             Some(err) => Err(err),
         }
-    }
-}
-
-/// Checks if the user's NvEncAPI version is supported.
-fn is_version_supported(version: u32) -> bool {
-    // TODO: Change this logic once older versions (9.0 to 10.0) are supported
-    let major_version = version >> 4;
-    let minor_version = version & 0b1111;
-    if major_version >= crate::sys::NVENCAPI_MAJOR_VERSION
-        && minor_version >= crate::sys::NVENCAPI_MINOR_VERSION
-    {
-        true
-    } else {
-        false
     }
 }
 
@@ -114,12 +103,7 @@ impl Drop for RawEncoder {
 }
 
 impl RawEncoder {
-    pub fn new<T: NvEncDevice>(device: &T) -> Result<Self> {
-        let library = Library::load()?;
-        if !is_version_supported(library.get_max_supported_version()?) {
-            return Err(NvEncError::UnsupportedVersion);
-        }
-
+    pub fn new<T: DeviceImplTrait>(device: &T, library: Library) -> Result<Self> {
         let functions = library.get_function_list()?;
         if !is_function_list_valid(&functions) {
             return Err(NvEncError::MalformedFunctionList);
@@ -555,10 +539,7 @@ impl RawEncoder {
         }
     }
     #[inline]
-    pub unsafe fn invalidate_ref_frames(
-        &self,
-        invalid_ref_frame_time_stamp: u64,
-    ) -> Result<()> {
+    pub unsafe fn invalidate_ref_frames(&self, invalid_ref_frame_time_stamp: u64) -> Result<()> {
         let status = (self.functions.nvEncInvalidateRefFrames.unwrap_unchecked())(
             self.encoder_ptr.as_ptr(),
             invalid_ref_frame_time_stamp,
@@ -625,10 +606,7 @@ impl RawEncoder {
         }
     }
     #[inline]
-    pub unsafe fn destroy_buffer(
-        &self,
-        mv_buffer: crate::sys::NV_ENC_OUTPUT_PTR,
-    ) -> Result<()> {
+    pub unsafe fn destroy_buffer(&self, mv_buffer: crate::sys::NV_ENC_OUTPUT_PTR) -> Result<()> {
         let status = (self.functions.nvEncDestroyMVBuffer.unwrap_unchecked())(
             self.encoder_ptr.as_ptr(),
             mv_buffer,

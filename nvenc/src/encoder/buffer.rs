@@ -1,8 +1,9 @@
-use super::{EventObject, EventObjectTrait, RawEncoder, Result};
-use crate::{
-    util::{IntoNvEncBufferFormat, NvEncTexture},
-    NvEncError,
+use super::{
+    event::{EventObject, EventObjectTrait},
+    raw_encoder::RawEncoder,
+    texture::TextureImplTrait,
 };
+use crate::{NvEncError, Result};
 use std::{
     mem::{ManuallyDrop, MaybeUninit},
     os::raw::c_void,
@@ -25,14 +26,14 @@ unsafe impl Send for NvidiaEncoderBufferItems {}
 impl NvidiaEncoderBufferItems {
     pub fn new<T>(
         raw_encoder: &RawEncoder,
-        buffer_texture: &T,
-        subresource_index: u32,
+        texture: &T,
+        pitch_or_subresource_index: u32,
     ) -> Result<Self>
     where
-        T: NvEncTexture,
+        T: TextureImplTrait,
     {
         let registered_resource =
-            register_input_resource(raw_encoder, buffer_texture, subresource_index)?;
+            register_input_resource(raw_encoder, texture, pitch_or_subresource_index)?;
         let output_buffer = create_output_buffer(raw_encoder)?;
 
         let event_obj = EventObject::new()?;
@@ -89,37 +90,22 @@ impl<'a> Drop for RegisteredResourceRAII<'a> {
 /// Registers the passed texture for NVENC API bookkeeping.
 fn register_input_resource<'a, T>(
     raw_encoder: &'a RawEncoder,
-    buffer_texture: &T,
-    subresource_index: u32,
+    texture: &T,
+    pitch_or_subresource_index: u32,
 ) -> Result<RegisteredResourceRAII<'a>>
 where
-    T: NvEncTexture,
+    T: TextureImplTrait,
 {
-    let (width, height, format) = buffer_texture.desc();
-    let mut register_resource_params = crate::sys::NV_ENC_REGISTER_RESOURCE {
-        version: crate::sys::NV_ENC_REGISTER_RESOURCE_VER,
-        resourceType: T::resource_type(),
-        width,
-        height,
-        pitch: 0,
-        subResourceIndex: subresource_index,
-        resourceToRegister: buffer_texture.as_ptr(),
-        registeredResource: std::ptr::null_mut(),
-        bufferFormat: format.into_nvenc_buffer_format(),
-        bufferUsage: crate::sys::NV_ENC_BUFFER_USAGE::NV_ENC_INPUT_IMAGE,
-        pInputFencePoint: std::ptr::null_mut(),
-        pOutputFencePoint: std::ptr::null_mut(),
-        reserved1: [0; 247],
-        reserved2: [std::ptr::null_mut(); 60],
-    };
+    let mut register_resource_args =
+        texture.build_register_resource_args(pitch_or_subresource_index)?;
 
     unsafe {
-        raw_encoder.register_resource(&mut register_resource_params)?;
+        raw_encoder.register_resource(&mut register_resource_args)?;
     }
 
     // Should not fail since `nvEncRegisterResource` succeeded
     let registered_resource =
-        NonNull::new(register_resource_params.registeredResource).ok_or(NvEncError::default())?;
+        NonNull::new(register_resource_args.registeredResource).ok_or(NvEncError::default())?;
 
     Ok(RegisteredResourceRAII {
         registered_resource,

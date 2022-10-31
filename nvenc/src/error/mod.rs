@@ -33,10 +33,6 @@ pub enum NvEncError {
     #[error("Encode preset is needed to build the encoder")]
     EncodePresetNotSet,
 
-    #[error("`NvEncRegisterResource` requires the pitch paramter for OpenGL and CUDA resources.")]
-    RegisterResourceMissingPitch,
-    #[error("`NvEncRegisterResource` requires a sub-resource index for DirectX resources.")]
-    RegisterResourceMissingSubresourceIndex,
     #[error("Failed creating a texture buffer")]
     TextureBufferCreationFailed,
 

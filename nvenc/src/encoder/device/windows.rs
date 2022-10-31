@@ -1,4 +1,4 @@
-use super::{DeviceImplTrait, TextureImplTrait};
+use super::{DeviceImplTrait, TextureImplTrait, IntoDevice};
 use crate::{NvEncError, Result};
 use windows::{
     core::Interface,
@@ -18,6 +18,7 @@ pub struct DirectXDevice {
 }
 
 impl DeviceImplTrait for DirectXDevice {
+    type Buffer = ID3D11Texture2D;
     type Texture = ID3D11Texture2D;
 
     fn device_type() -> crate::sys::NV_ENC_DEVICE_TYPE {
@@ -83,6 +84,21 @@ impl DeviceImplTrait for DirectXDevice {
                 0,
                 std::ptr::null(),
             );
+        }
+    }
+}
+
+impl IntoDevice for ID3D11Device {
+    type Device = DirectXDevice;
+
+    fn into_device(self) -> Self::Device {
+        let mut immediate_context = None;
+        unsafe {
+            self.GetImmediateContext(&mut immediate_context);
+        }
+        DirectXDevice {
+            device: self,
+            immediate_context: immediate_context.unwrap(),
         }
     }
 }

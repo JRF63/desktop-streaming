@@ -1,8 +1,18 @@
 use super::{
-    config_v2::EncodeParams, device::DeviceImplTrait, library::Library, raw_encoder_v2::RawEncoder,
+    config::EncodeParams,
+    device::{DeviceImplTrait, IntoDevice},
+    encoder_input::EncoderInput,
+    encoder_output::EncoderOutput,
+    library::Library,
+    raw_encoder::RawEncoder,
+    shared::encoder_channel_v2,
+    texture::TextureImplTrait,
 };
 use crate::{Codec, CodecProfile, EncodePreset, NvEncError, Result, TuningInfo};
 use std::mem::MaybeUninit;
+
+/// Size of the ring buffer that is shared between the input and output
+pub const BUFFER_SIZE: usize = 8;
 
 /// Checks if the user's NvEncAPI version is supported.
 fn is_version_supported(version: u32) -> bool {
@@ -35,7 +45,7 @@ impl<D> EncoderBuilder<D>
 where
     D: DeviceImplTrait,
 {
-    pub fn new(device: D) -> Result<Self> {
+    pub fn new<I: IntoDevice<Device = D>>(device: I) -> Result<Self> {
         let library = Library::load()?;
 
         let max_supported_version = library.get_max_supported_version()?;
@@ -44,6 +54,7 @@ where
             return Err(NvEncError::UnsupportedVersion);
         }
 
+        let device = device.into_device();
         let raw_encoder = RawEncoder::new(&device, library)?;
 
         Ok(EncoderBuilder {
@@ -90,13 +101,19 @@ where
         }
     }
 
+    pub fn with_tuning_info(&mut self, tuning_info: TuningInfo) -> Result<&mut Self> {
+        self.tuning_info = tuning_info;
+        Ok(self)
+    }
+
     pub fn build(
         self,
         width: u32,
         height: u32,
+        texture_format: <D::Texture as TextureImplTrait>::TextureFormat,
         display_aspect_ratio: Option<(u32, u32)>,
         refresh_rate_ratio: (u32, u32),
-    ) -> Result<()> {
+    ) -> Result<(EncoderInput<D>, EncoderOutput)> {
         let codec = self.codec.ok_or(NvEncError::CodecNotSet)?;
         let profile = self.profile;
         let preset = self.preset.ok_or(NvEncError::EncodePresetNotSet)?;
@@ -114,11 +131,17 @@ where
             tuning_info,
         )?;
 
-        unsafe {
-            self.raw_encoder.initialize_encoder(encode_params.initializer())?;
-        }
-        
-        todo!()
+        encode_params.initialize_encoder(&self.raw_encoder)?;
+
+        let texture_buffer =
+            self.device
+                .create_texture_buffer(width, height, texture_format, BUFFER_SIZE as u32)?;
+
+        let (writer, reader) = encoder_channel_v2(self.raw_encoder, &texture_buffer)?;
+
+        let encoder_input = EncoderInput::new(self.device, writer, texture_buffer, encode_params)?;
+        let encoder_output = EncoderOutput::new(reader);
+        Ok((encoder_input, encoder_output))
     }
 
     /// List all supported codecs (H.264, HEVC, etc.).

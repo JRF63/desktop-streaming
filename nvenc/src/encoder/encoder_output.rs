@@ -1,4 +1,4 @@
-use super::{EventObjectTrait, NvidiaEncoderReader};
+use super::{shared::NvidiaEncoderReader, event::EventObjectTrait};
 use crate::{NvEncError, Result};
 use std::mem::MaybeUninit;
 
@@ -7,7 +7,7 @@ pub struct EncoderOutput {
 }
 
 impl EncoderOutput {
-    pub fn new(reader: NvidiaEncoderReader) -> Self {
+    pub(crate) fn new(reader: NvidiaEncoderReader) -> Self {
         EncoderOutput { reader }
     }
 

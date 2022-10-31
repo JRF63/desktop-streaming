@@ -4,12 +4,14 @@ mod windows;
 #[cfg(windows)]
 pub use self::windows::DirectXDevice as Device;
 
-use super::texture::TextureImplTrait;
+use super::texture::{TextureImplTrait, TextureBufferImplTrait};
 use crate::Result;
 use std::ffi::c_void;
 
 /// Methods needed to be implemented by a NvEnc device.
 pub trait DeviceImplTrait {
+    /// Texture buffer for staging input frames.
+    type Buffer: TextureBufferImplTrait;
     /// Native texture used by the device.
     type Texture: TextureImplTrait;
 
@@ -28,13 +30,19 @@ pub trait DeviceImplTrait {
         height: u32,
         texture_format: <Self::Texture as TextureImplTrait>::TextureFormat,
         buf_size: u32,
-    ) -> Result<Self::Texture>;
+    ) -> Result<Self::Buffer>;
 
     /// Copy a texture to the given buffer.
     fn copy_texture(
         &self,
-        buffer: &Self::Texture,
+        buffer: &Self::Buffer,
         texture: &Self::Texture,
         subresource_index: usize,
     );
+}
+
+pub trait IntoDevice {
+    type Device: DeviceImplTrait;
+
+    fn into_device(self) -> Self::Device;
 }

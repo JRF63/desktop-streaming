@@ -1,21 +1,16 @@
 mod sync;
 
-use super::{buffer::NvidiaEncoderBufferItems, EncoderParams, RawEncoder};
-use crate::{
-    util::{NvEncDevice, NvEncTexture},
-    Codec, EncodePreset, Result, TuningInfo,
+use super::{
+    buffer::NvidiaEncoderBufferItems, builder::BUFFER_SIZE, raw_encoder::RawEncoder,
+    texture::TextureBufferImplTrait,
 };
+use crate::Result;
 use std::{mem::MaybeUninit, ops::Deref, sync::Arc};
 use sync::{CyclicBuffer, CyclicBufferReader, CyclicBufferWriter};
 
-use windows::Win32::Graphics::Dxgi::DXGI_OUTDUPL_DESC;
-
-/// Size of the ring buffer that is shared between the input and output
-pub const ENCODER_BUFFER_SIZE: usize = 8;
-
 struct NvidiaEncoderShared {
     raw_encoder: RawEncoder,
-    buffer: CyclicBuffer<NvidiaEncoderBufferItems, ENCODER_BUFFER_SIZE>,
+    buffer: CyclicBuffer<NvidiaEncoderBufferItems, BUFFER_SIZE>,
 }
 
 impl Drop for NvidiaEncoderShared {
@@ -26,41 +21,24 @@ impl Drop for NvidiaEncoderShared {
     }
 }
 
-pub fn encoder_channel<D, T>(
-    device: &D,
-    display_desc: &DXGI_OUTDUPL_DESC,
-    buffer_texture: &T,
-    codec: Codec,
-    preset: EncodePreset,
-    tuning_info: TuningInfo,
-) -> Result<(
-    (NvidiaEncoderWriter, NvidiaEncoderReader),
-    EncoderParams,
-)>
+pub fn encoder_channel_v2<T>(
+    raw_encoder: RawEncoder,
+    texture_buffer: &T,
+) -> Result<(NvidiaEncoderWriter, NvidiaEncoderReader)>
 where
-    D: NvEncDevice,
-    T: NvEncTexture,
+    T: TextureBufferImplTrait,
 {
-    let raw_encoder = RawEncoder::new(device)?;
-
-    let mut encoder_params =
-        EncoderParams::new(&raw_encoder, display_desc, codec, preset, tuning_info)?;
-
-    unsafe {
-        raw_encoder.initialize_encoder(encoder_params.init_params_mut())?;
-    }
-
     let buffer = unsafe {
-        let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; ENCODER_BUFFER_SIZE]>::uninit();
+        let mut buffer = MaybeUninit::<[NvidiaEncoderBufferItems; BUFFER_SIZE]>::uninit();
 
         // Pointer to the start of the array's buffer
         let mut ptr = (&mut *buffer.as_mut_ptr()).as_mut_ptr();
 
-        for i in 0..ENCODER_BUFFER_SIZE {
+        for i in 0..BUFFER_SIZE {
             ptr.write(NvidiaEncoderBufferItems::new(
                 &raw_encoder,
-                buffer_texture,
-                i as u32,
+                texture_buffer.get_texture(i),
+                texture_buffer.get_pitch_or_subresource_index(i),
             )?);
             ptr = ptr.offset(1);
         }
@@ -74,7 +52,7 @@ where
     let writer = NvidiaEncoderWriter(shared_encoder.clone());
     let reader = NvidiaEncoderReader(shared_encoder);
 
-    Ok(((writer, reader), encoder_params))
+    Ok((writer, reader))
 }
 
 #[repr(transparent)]

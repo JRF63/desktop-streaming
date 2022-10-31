@@ -16,13 +16,18 @@ pub trait TextureImplTrait {
 
     fn resource_type() -> crate::sys::NV_ENC_INPUT_RESOURCE_TYPE;
 
-    fn description(&self) -> (u32, u32, Self::TextureFormat);
-
     fn as_ptr(&self) -> *mut c_void;
 
     fn build_register_resource_args(
         &self,
-        pitch: Option<u32>,
-        subresource_index: Option<u32>,
+        pitch_or_subresource_index: u32,
     ) -> Result<crate::sys::NV_ENC_REGISTER_RESOURCE>;
+}
+
+pub trait TextureBufferImplTrait {
+    type Texture: TextureImplTrait;
+
+    fn get_texture(&self, index: usize) -> &Self::Texture;
+
+    fn get_pitch_or_subresource_index(&self, index: usize) -> u32;
 }
