@@ -137,7 +137,8 @@ fn build_encode_config<T: IntoNvEncBufferFormat>(
     };
 
     // Need to set the profile after `NvEncGetEncodePresetConfigEx` because it will get wiped
-    // otherwise.
+    // otherwise. A zeroed GUID is a valid value for the profileGUID in which case the encoder
+    // autoselects a profile.
     encode_config.profileGUID = profile.into();
 
     extra_options.modify_encode_config(&mut encode_config);
@@ -247,11 +248,12 @@ impl ExtraOptions {
 }
 
 fn pixel_bit_depth_minus_8(nvenc_format: &crate::sys::NV_ENC_BUFFER_FORMAT) -> u32 {
+    // Ignore 10-bit RGB formats:
+    //
+    // https://github.com/NVIDIA/video-sdk-samples/blob/aa3544dcea2fe63122e4feb83bf805ea40e58dbe/nvEncBroadcastSample/nvEnc/nvCodec/nvEncoder/NvEncoder.cpp#L200
     match nvenc_format {
         crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV420_10BIT
-        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV444_10BIT
-        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ARGB10
-        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_ABGR10 => 2,
+        | crate::sys::NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_YUV444_10BIT => 2,
         _ => 0,
     }
 }
