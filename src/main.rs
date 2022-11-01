@@ -95,7 +95,7 @@ fn main() {
                 lock.frameIdx, time_delta, lock.bitstreamSizeInBytes
             );
 
-            let mut file = File::create(format!("nvenc/regex/nalus/{}.h264", i)).unwrap();
+            let mut file = File::create(format!("scratch/nalus/{}.h264", i)).unwrap();
             i += 1;
 
             let slice = unsafe {
@@ -119,7 +119,7 @@ fn main() {
 
     {
         let csd = encoder.get_codec_specific_data().unwrap();
-        let mut file = File::create("nvenc/regex/nalus/csd.bin").unwrap();
+        let mut file = File::create("scratch/nalus/csd.bin").unwrap();
         file.write_all(&csd).unwrap();
     }
 
