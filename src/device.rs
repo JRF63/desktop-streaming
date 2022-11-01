@@ -1,10 +1,10 @@
 use windows::{
-    core::{Result, Interface},
+    core::{Interface, Result},
     Win32::Graphics::{
         Direct3D::{self, D3D_DRIVER_TYPE_HARDWARE},
         Direct3D11::{
-            D3D11CreateDevice, ID3D11Device, D3D11_CREATE_DEVICE_DEBUG, D3D11_SDK_VERSION,
-            D3D11_CREATE_DEVICE_FLAG, ID3D11Multithread
+            D3D11CreateDevice, ID3D11Device, ID3D11Multithread, D3D11_CREATE_DEVICE_DEBUG,
+            D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION,
         },
     },
 };
@@ -22,7 +22,7 @@ pub fn create_d3d11_device() -> Result<ID3D11Device> {
     ];
 
     let mut flags = D3D11_CREATE_DEVICE_FLAG(0);
-    
+
     #[cfg(debug_assertions)]
     {
         flags |= D3D11_CREATE_DEVICE_DEBUG;
@@ -36,11 +36,11 @@ pub fn create_d3d11_device() -> Result<ID3D11Device> {
             D3D_DRIVER_TYPE_HARDWARE,
             None,
             flags,
-            &feature_levels,
+            Some(feature_levels.as_slice()),
             D3D11_SDK_VERSION,
-            &mut device,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
+            Some(&mut device),
+            None,
+            None,
         )?;
     }
 
@@ -50,7 +50,7 @@ pub fn create_d3d11_device() -> Result<ID3D11Device> {
         device.GetImmediateContext(&mut tmp);
         tmp.unwrap()
     };
-    
+
     let multithreaded: ID3D11Multithread = device_context.cast().unwrap();
     unsafe {
         // Needed to prevent random deadlocks. The performance cost is quite negligible.

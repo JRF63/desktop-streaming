@@ -11,7 +11,7 @@ nvenc = { path = "nvenc-rs/nvenc" }
 crossbeam-channel = "0.5"
 
 [dependencies.windows]
-version = "0.37"
+version = "0.43"
 features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
