@@ -64,9 +64,8 @@ impl Encoder for NvidiaEncoder {
                     )
                 };
 
-                // Convert to 90000 Hz clock
-                let microseconds = (lock.outputTimeStamp * 1000000) / self.timer_frequency;
-                timestamp = (microseconds / 90000) as u32;
+                // Convert to 90000 Hz timestamp
+                timestamp = ((lock.outputTimeStamp * 90000) / self.timer_frequency) as u32;
 
                 if let Err(e) = self.payloader.payload(
                     mtu,
