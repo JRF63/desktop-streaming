@@ -1,3 +1,6 @@
 [submodule "nvenc-rs"]
 	path = nvenc-rs
 	url = https://github.com/JRF63/nvenc-rs.git
+[submodule "webrtc-helper"]
+	path = webrtc-helper
+	url = https://github.com/JRF63/webrtc-helper.git

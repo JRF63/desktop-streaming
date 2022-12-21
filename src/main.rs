@@ -1,15 +1,19 @@
 mod capture;
 mod device;
+mod encoder;
 mod input;
 
-use nvenc::{Codec, CodecProfile, Device, EncodePreset, EncoderInput, EncoderOutput, TuningInfo};
-use windows::{Win32::Graphics::{
-    Direct3D11::{ID3D11Device, ID3D11Texture2D},
-    Dxgi::{
-        Common::DXGI_FORMAT,
-        {DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT},
+use nvenc::{Codec, CodecProfile, DirectX11Device, EncodePreset, EncoderInput, EncoderOutput, TuningInfo};
+use windows::{
+    core::Interface,
+    Win32::Graphics::{
+        Direct3D11::{ID3D11Device, ID3D11Texture2D},
+        Dxgi::{
+            Common::DXGI_FORMAT,
+            {DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT},
+        },
     },
-}, core::Interface};
+};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -20,7 +24,7 @@ fn create_encoder(
     height: u32,
     texture_format: DXGI_FORMAT,
     refresh_rate_ratio: (u32, u32),
-) -> nvenc::Result<(EncoderInput<Device>, EncoderOutput)> {
+) -> nvenc::Result<(EncoderInput<DirectX11Device>, EncoderOutput)> {
     let codec = Codec::H264;
     let profile = CodecProfile::H264High;
     let preset = EncodePreset::P4;
@@ -33,10 +37,18 @@ fn create_encoder(
         .with_encode_preset(preset)?
         .with_tuning_info(tuning_info)?;
 
+    for codec in builder.supported_codecs().unwrap() {
+        dbg!(&codec);
+        dbg!(builder.supported_codec_profiles(codec).unwrap());
+        dbg!(builder.supported_encode_presets(codec).unwrap());
+    }
+
     builder.build(width, height, texture_format, None, refresh_rate_ratio)
 }
 
 fn main() {
+    env_logger::init();
+
     let display_index = 0;
     let formats = vec![windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM];
     const NUM_FRAMES: usize = 120;
@@ -60,7 +72,10 @@ fn main() {
         )
     };
 
-    let (mut encoder, encoder_output) = create_encoder(device, width, height, texture_format, refresh_ratio).unwrap();
+    let (mut encoder, encoder_output) =
+        create_encoder(device, width, height, texture_format, refresh_ratio).unwrap();
+
+    return;
 
     // let (mut encoder, encoder_output) =
     //     nvenc::create_encoder(device, &display_desc, codec, preset, tuning_info);

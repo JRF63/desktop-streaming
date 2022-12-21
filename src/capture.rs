@@ -31,6 +31,8 @@ pub struct ScreenDuplicator {
     dpi_aware: bool,
 }
 
+unsafe impl Send for ScreenDuplicator {}
+
 impl ScreenDuplicator {
     /// Creates a new ScreenDuplicator.
     pub fn new(

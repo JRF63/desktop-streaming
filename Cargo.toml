@@ -4,11 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-exclude = ["nvenc-rs"]
+exclude = ["nvenc-rs", "webrtc-helper"]
 
 [dependencies]
 nvenc = { path = "nvenc-rs/nvenc" }
-crossbeam-channel = "0.5"
+webrtc = "0.6"
+webrtc-helper = { path = "webrtc-helper" }
+log = "0.4.0"
+env_logger = "0.10.0"
+tokio = { version = "1.21.1", features = ["full"] }
+bytes = "1.2.1"
 
 [dependencies.windows]
 version = "0.43"
