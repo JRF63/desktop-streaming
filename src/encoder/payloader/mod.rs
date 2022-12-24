@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Copied from rtp::codecs::h264::H264Payloader to allow reuse of a Vec buffer
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -199,5 +200,31 @@ impl H264Payloader {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const H264_CSD_BYTES: &'static [u8] = include_bytes!("h264-csd.bin");
+    const H264_INBAND_CSD_BYTES : &'static [u8] = include_bytes!("h264-inband-csd.bin");
+
+    #[test]
+    fn csd_fragment() {
+        let mut packets = Vec::new();
+        let mut payloader = H264Payloader::default();
+        payloader
+            .payload(1200, &Bytes::from_static(H264_CSD_BYTES), &mut packets)
+            .expect("Failed to fragment codec specific data");
+    }
+
+    #[test]
+    fn inband_csd() {
+        let mut packets = Vec::new();
+        let mut payloader = H264Payloader::default();
+        payloader
+            .payload(1200, &Bytes::from_static(H264_INBAND_CSD_BYTES), &mut packets)
+            .expect("Failed to fragment codec specific data");
     }
 }

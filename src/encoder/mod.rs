@@ -29,7 +29,6 @@ pub struct NvidiaEncoder {
     sender: Sender<DataRate>,
     payload_type: u8,
     ssrc: u32,
-    csd: Option<Vec<u8>>,
     timer_frequency: u64,
     sequencer: Box<dyn Sequencer + Send + Sync>,
     payloader: payloader::H264Payloader,
@@ -45,40 +44,29 @@ impl Encoder for NvidiaEncoder {
 
         let mut timestamp = 0;
 
-        // Send codec specific data first
-        if let Some(csd) = self.csd.take() {
-            if let Err(e) = self
-                .payloader
-                .payload(mtu, &bytes::Bytes::from(csd), &mut self.packets)
-            {
+        // Send the encoded frames
+        if let Err(e) = self.output.wait_for_output(|lock| {
+            let slice = unsafe {
+                std::slice::from_raw_parts(
+                    lock.bitstreamBufferPtr as *const u8,
+                    lock.bitstreamSizeInBytes as usize,
+                )
+            };
+
+            // Convert to 90000 Hz timestamp
+            timestamp = ((lock.outputTimeStamp * 90000) / self.timer_frequency) as u32;
+
+            if let Err(e) = self.payloader.payload(
+                mtu,
+                &bytes::Bytes::copy_from_slice(slice),
+                &mut self.packets,
+            ) {
                 log::error!("{e}");
                 panic!("Error in fragmenting NALU");
             }
-        // Send the encoded frames
-        } else {
-            if let Err(e) = self.output.wait_for_output(|lock| {
-                let slice = unsafe {
-                    std::slice::from_raw_parts(
-                        lock.bitstreamBufferPtr as *const u8,
-                        lock.bitstreamSizeInBytes as usize,
-                    )
-                };
-
-                // Convert to 90000 Hz timestamp
-                timestamp = ((lock.outputTimeStamp * 90000) / self.timer_frequency) as u32;
-
-                if let Err(e) = self.payloader.payload(
-                    mtu,
-                    &bytes::Bytes::copy_from_slice(slice),
-                    &mut self.packets,
-                ) {
-                    log::error!("{e}");
-                    panic!("Error in fragmenting NALU");
-                }
-            }) {
-                log::error!("{e}");
-                panic!("Error while waiting for output");
-            }
+        }) {
+            log::error!("{e}");
+            panic!("Error while waiting for output");
         }
 
         for packet in &mut self.packets {
@@ -112,14 +100,6 @@ impl NvidiaEncoder {
     ) -> Self {
         let (tx, rx) = channel::<DataRate>(CHANNEL_SIZE);
 
-        let csd = match input.get_codec_specific_data() {
-            Ok(csd) => Some(csd),
-            Err(e) => {
-                log::error!("{e}");
-                panic!("Unable to get codec specific config");
-            }
-        };
-
         std::thread::spawn(move || {
             NvidiaEncoder::encoder_input_loop(screen_duplicator, display_formats, input, rx);
         });
@@ -135,7 +115,6 @@ impl NvidiaEncoder {
             sender: tx,
             payload_type,
             ssrc,
-            csd,
             timer_frequency,
             sequencer: Box::new(new_random_sequencer()),
             payloader: payloader::H264Payloader::default(),
