@@ -210,9 +210,21 @@ fn list_supported_codecs(
 }
 
 impl NvidiaEncoderBuilder {
-    pub fn new() -> Option<Self> {
-        let device = create_d3d11_device().ok()?;
-        let mut inner_builder = nvenc::EncoderBuilder::new(device.clone()).ok()?;
+    pub fn new() -> Self {
+        let device = match create_d3d11_device() {
+            Ok(device) => device,
+            Err(e) => {
+                log::error!("{e}");
+                panic!("Unable to create D3D11Device");
+            }
+        };
+        let mut inner_builder = match nvenc::EncoderBuilder::new(device.clone()) {
+            Ok(inner_builder) => inner_builder,
+            Err(e) => {
+                log::error!("{e}");
+                panic!("Error while creating the encoder");
+            }
+        };
 
         let id = INCREMENTAL_ID.fetch_add(1, Ordering::AcqRel);
         let display_index = 0; // default to the first; could be changed later
@@ -225,18 +237,18 @@ impl NvidiaEncoderBuilder {
             Ok(supported_codecs) => supported_codecs,
             Err(e) => {
                 log::error!("{e}");
-                return None;
+                panic!("Unable to list codecs");
             }
         };
 
-        Some(Self {
+        Self {
             inner_builder,
             device,
             id: format!("{}", id),
             display_index,
             display_formats,
             supported_codecs,
-        })
+        }
     }
 
     pub fn set_display_index(&mut self, display_index: u32) {

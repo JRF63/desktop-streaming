@@ -21,6 +21,7 @@ use windows::{
         System::Performance::QueryPerformanceFrequency,
     },
 };
+pub use builder::NvidiaEncoderBuilder;
 
 const CHANNEL_SIZE: usize = 4;
 

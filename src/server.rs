@@ -1,15 +1,20 @@
-use std::net::SocketAddr;
+use crate::encoder::NvidiaEncoderBuilder;
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
+use std::net::SocketAddr;
 use tokio::sync::Mutex;
 use warp::{
     http::{Response, StatusCode},
     ws::WebSocket,
     Filter,
 };
-use webrtc_helper::signaling::{Message, Signaler};
+use webrtc_helper::{
+    peer::Role,
+    signaling::{Message, Signaler},
+    WebRtcBuilder,
+};
 
 const INDEX: &'static str = include_str!("html/index.html");
 const NOT_FOUND: &'static str = include_str!("html/not_found.html");
@@ -35,16 +40,13 @@ impl WebSocketSignaler {
 impl Signaler for WebSocketSignaler {
     async fn recv(&self) -> std::io::Result<Message> {
         match self.rx.lock().await.next().await {
-            Some(Ok(ws_msg)) => {
-                if let Ok(s) = ws_msg.to_str() {
-                    match serde_json::from_str::<Message>(s) {
-                        Ok(msg) => Ok(msg),
-                        Err(_) => Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)),
-                    }
-                } else {
-                    Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof))
-                }
-            }
+            Some(Ok(ws_msg)) => match ws_msg.to_str() {
+                Ok(s) => match serde_json::from_str::<Message>(s) {
+                    Ok(msg) => Ok(msg),
+                    Err(_) => Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)),
+                },
+                Err(_) => Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)),
+            },
             _ => Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)), // closed
         }
     }
@@ -83,4 +85,15 @@ pub async fn http_server(addr: impl Into<SocketAddr>) {
 async fn process_websocket(socket: WebSocket) {
     let (ws_tx, ws_rx) = socket.split();
     let websocket_signaler = WebSocketSignaler::new(ws_tx, ws_rx);
+
+    // TODO: Debug
+
+    tokio::spawn(async move {
+        let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Offerer);
+        encoder_builder.with_encoder(Box::new(NvidiaEncoderBuilder::new()));
+        let encoder = encoder_builder.build().await.unwrap();
+        while !encoder.is_closed() {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    });
 }
