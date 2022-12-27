@@ -88,6 +88,8 @@ async fn process_websocket(socket: WebSocket) {
 
     // TODO: Debug
 
+    println!("process_websocket");
+
     tokio::spawn(async move {
         let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Offerer);
         encoder_builder.with_encoder(Box::new(NvidiaEncoderBuilder::new()));
@@ -96,4 +98,6 @@ async fn process_websocket(socket: WebSocket) {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     });
+
+    println!("process_websocket");
 }
