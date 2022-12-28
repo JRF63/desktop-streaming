@@ -1,8 +1,5 @@
 use crate::encoder::NvidiaEncoderBuilder;
-use futures_util::{
-    stream::{SplitSink, SplitStream},
-    SinkExt, StreamExt,
-};
+use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use tokio::sync::Mutex;
 use warp::{
@@ -20,18 +17,13 @@ const INDEX: &'static str = include_str!("html/index.html");
 const NOT_FOUND: &'static str = include_str!("html/not_found.html");
 
 pub struct WebSocketSignaler {
-    tx: Mutex<SplitSink<WebSocket, warp::ws::Message>>,
-    rx: Mutex<SplitStream<WebSocket>>,
+    socket: Mutex<WebSocket>,
 }
 
 impl WebSocketSignaler {
-    fn new(
-        tx: SplitSink<WebSocket, warp::ws::Message>,
-        rx: SplitStream<WebSocket>,
-    ) -> WebSocketSignaler {
+    fn new(socket: WebSocket) -> WebSocketSignaler {
         WebSocketSignaler {
-            tx: Mutex::new(tx),
-            rx: Mutex::new(rx),
+            socket: Mutex::new(socket),
         }
     }
 }
@@ -39,7 +31,7 @@ impl WebSocketSignaler {
 #[async_trait::async_trait]
 impl Signaler for WebSocketSignaler {
     async fn recv(&self) -> std::io::Result<Message> {
-        match self.rx.lock().await.next().await {
+        match self.socket.lock().await.next().await {
             Some(Ok(ws_msg)) => match ws_msg.to_str() {
                 Ok(s) => match serde_json::from_str::<Message>(s) {
                     Ok(msg) => Ok(msg),
@@ -54,7 +46,7 @@ impl Signaler for WebSocketSignaler {
     async fn send(&self, msg: Message) -> std::io::Result<()> {
         if let Ok(s) = serde_json::to_string(&msg) {
             let ws_msg = warp::ws::Message::text(s);
-            if let Err(_) = self.tx.lock().await.send(ws_msg).await {
+            if let Err(_) = self.socket.lock().await.send(ws_msg).await {
                 return Ok(());
             }
         }
@@ -83,12 +75,9 @@ pub async fn http_server(addr: impl Into<SocketAddr>) {
 }
 
 async fn process_websocket(socket: WebSocket) {
-    let (ws_tx, ws_rx) = socket.split();
-    let websocket_signaler = WebSocketSignaler::new(ws_tx, ws_rx);
+    let websocket_signaler = WebSocketSignaler::new(socket);
 
     // TODO: Debug
-
-    println!("process_websocket");
 
     tokio::spawn(async move {
         let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Offerer);
@@ -98,6 +87,4 @@ async fn process_websocket(socket: WebSocket) {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     });
-
-    println!("process_websocket");
 }
