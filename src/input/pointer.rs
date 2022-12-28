@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use windows::{
     core::Result,
     Win32::UI::{
