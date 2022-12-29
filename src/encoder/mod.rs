@@ -2,7 +2,11 @@ mod builder;
 mod payloader;
 
 use crate::capture::ScreenDuplicator;
-use tokio::sync::mpsc::{channel, error::TryRecvError, Receiver, Sender};
+pub use builder::NvidiaEncoderBuilder;
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc,
+};
 use webrtc::rtp::{
     packet::Packet,
     sequence::{new_random_sequencer, Sequencer},
@@ -21,26 +25,25 @@ use windows::{
         System::Performance::QueryPerformanceFrequency,
     },
 };
-pub use builder::NvidiaEncoderBuilder;
-
-const CHANNEL_SIZE: usize = 4;
 
 pub struct NvidiaEncoder {
     output: nvenc::EncoderOutput,
-    sender: Sender<DataRate>,
+    data_rate: Arc<AtomicU32>,
     payload_type: u8,
     ssrc: u32,
     timer_frequency: u64,
     sequencer: Box<dyn Sequencer + Send + Sync>,
     payloader: payloader::H264Payloader,
     packets: Vec<Packet>,
+    debug_counter: usize,
 }
 
 impl Encoder for NvidiaEncoder {
     fn packets(&mut self, mtu: usize, data_rate: DataRate) -> &[Packet] {
-        if let Err(e) = self.sender.blocking_send(data_rate) {
-            log::error!("{e}");
-        }
+        let data_rate = data_rate.bits_per_sec() as u32;
+        self.debug_counter += 1;
+        self.data_rate.store(data_rate, Ordering::Release);
+
         self.packets.clear();
 
         let mut timestamp = 0;
@@ -99,10 +102,18 @@ impl NvidiaEncoder {
         payload_type: u8,
         ssrc: u32,
     ) -> Self {
-        let (tx, rx) = channel::<DataRate>(CHANNEL_SIZE);
+        log::info!("NvidiaEncoder::new");
+
+        let data_rate = Arc::new(AtomicU32::new(0));
+        let data_rate_clone = data_rate.clone();
 
         std::thread::spawn(move || {
-            NvidiaEncoder::encoder_input_loop(screen_duplicator, display_formats, input, rx);
+            NvidiaEncoder::encoder_input_loop(
+                screen_duplicator,
+                display_formats,
+                input,
+                data_rate_clone,
+            );
         });
 
         let mut timer_frequency = 0;
@@ -113,13 +124,14 @@ impl NvidiaEncoder {
 
         NvidiaEncoder {
             output,
-            sender: tx,
+            data_rate,
             payload_type,
             ssrc,
             timer_frequency,
             sequencer: Box::new(new_random_sequencer()),
             payloader: payloader::H264Payloader::default(),
             packets: Vec::new(),
+            debug_counter: 0,
         }
     }
 
@@ -127,57 +139,50 @@ impl NvidiaEncoder {
         mut screen_duplicator: ScreenDuplicator,
         display_formats: Vec<DXGI_FORMAT>,
         mut input: nvenc::EncoderInput<nvenc::DirectX11Device>,
-        mut receiver: Receiver<DataRate>,
+
+        data_rate: Arc<AtomicU32>,
     ) {
-        let mut bitrate = 0;
         let mut prev_bitrate = 0;
 
-        loop {
-            match receiver.try_recv() {
-                Ok(data_rate) => {
-                    bitrate = data_rate.bits_per_sec() as u32;
+        while Arc::strong_count(&data_rate) > 1 {
+            let bitrate = data_rate.load(Ordering::Acquire);
+            if prev_bitrate != bitrate {
+                if let Err(e) = input.update_average_bitrate(bitrate) {
+                    log::error!("{e}");
+                    panic!("Error trying to update bitrate");
                 }
-                Err(TryRecvError::Empty) => {
-                    if prev_bitrate != bitrate {
-                        if let Err(e) = input.update_average_bitrate(bitrate) {
-                            log::error!("{e}");
-                            panic!("Error trying to update bitrate");
-                        }
-                        prev_bitrate = bitrate;
-                    }
-
-                    let (resource, info) = loop {
-                        match screen_duplicator.acquire_frame() {
-                            Ok(r) => break r,
-                            Err(e) => {
-                                match e.code() {
-                                    DXGI_ERROR_WAIT_TIMEOUT => {
-                                        log::info!("AcquireNextFrame timed-out");
-                                    }
-                                    DXGI_ERROR_ACCESS_LOST => {
-                                        // Must call reset_output_duplicator if AccessLost
-                                        screen_duplicator
-                                            .reset_output_duplicator(&display_formats)
-                                            .unwrap();
-                                    }
-                                    _ => panic!("{}", e),
-                                }
-                            }
-                        }
-                    };
-
-                    // `IDXGIResource` to `ID3D11Texture2D` should never fail
-                    let acquired_image: ID3D11Texture2D = resource.cast().unwrap();
-
-                    let timestamp = u64::from_ne_bytes(info.LastPresentTime.to_ne_bytes());
-                    input
-                        .encode_frame(acquired_image, timestamp, || {
-                            screen_duplicator.release_frame().unwrap()
-                        })
-                        .unwrap();
-                }
-                Err(TryRecvError::Disconnected) => break, // Sender exited; break out of loop
+                prev_bitrate = bitrate;
             }
+
+            let (resource, info) = loop {
+                match screen_duplicator.acquire_frame() {
+                    Ok(r) => break r,
+                    Err(e) => {
+                        match e.code() {
+                            DXGI_ERROR_WAIT_TIMEOUT => {
+                                // log::info!("AcquireNextFrame timed-out");
+                            }
+                            DXGI_ERROR_ACCESS_LOST => {
+                                // Must call reset_output_duplicator if AccessLost
+                                screen_duplicator
+                                    .reset_output_duplicator(&display_formats)
+                                    .unwrap();
+                            }
+                            _ => panic!("{}", e),
+                        }
+                    }
+                }
+            };
+
+            // `IDXGIResource` to `ID3D11Texture2D` should never fail
+            let acquired_image: ID3D11Texture2D = resource.cast().unwrap();
+
+            let timestamp = u64::from_ne_bytes(info.LastPresentTime.to_ne_bytes());
+            input
+                .encode_frame(acquired_image, timestamp, || {
+                    screen_duplicator.release_frame().unwrap()
+                })
+                .unwrap();
         }
     }
 }
