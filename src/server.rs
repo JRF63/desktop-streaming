@@ -16,6 +16,7 @@ use webrtc_helper::{
     WebRtcBuilder,
 };
 
+#[cfg(not(debug_assertions))]
 const INDEX: &'static str = include_str!("html/index.html");
 const NOT_FOUND: &'static str = include_str!("html/not_found.html");
 
@@ -62,7 +63,23 @@ impl Signaler for WebSocketSignaler {
 
 pub async fn http_server(addr: impl Into<SocketAddr>) {
     // GET /
-    let index = warp::path::end().map(|| Response::new(INDEX));
+    let index = warp::path::end().map(|| {
+        #[cfg(not(debug_assertions))]
+        {
+            Response::new(INDEX)
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            use std::fs::File;
+            use std::io::prelude::*;
+
+            let mut file = File::open("src/html/index.html").unwrap();
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).unwrap();
+            Response::new(contents)
+        }
+    });
 
     // 404
     let not_found = warp::path::peek().map(|_| {
