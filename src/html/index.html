@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>WebRTC Screen Duplicator Client</title>
 </head>
 
@@ -13,7 +13,6 @@
 </body>
 
 <script>
-    console.log('ws://' + location.host + '/ws');
     const ws = new WebSocket('ws://' + location.host + '/ws');
     const pc = new RTCPeerConnection();
     const polite = true;
@@ -21,7 +20,11 @@
     let ignoreOffer = false;
     let makingOffer = false;
 
-    pc.addTransceiver('video');
+    try {
+        pc.addTransceiver('video', { 'direction': 'recvonly' });
+    } catch (err) {
+        console.log(err);
+    }
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
@@ -36,19 +39,19 @@
         }
     }
 
-    pc.onnegotiationneeded = async () => {
-        try {
-            makingOffer = true;
-            await pc.setLocalDescription();
-            const json = JSON.stringify({ type: "Sdp", data: pc.localDescription });
-            await waitForWebSocket();
-            ws.send(json);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            makingOffer = false;
-        }
-    };
+    // pc.onnegotiationneeded = async () => {
+    //     try {
+    //         makingOffer = true;
+    //         await pc.setLocalDescription();
+    //         const json = JSON.stringify({ type: "Sdp", data: pc.localDescription });
+    //         await waitForWebSocket();
+    //         ws.send(json);
+    //     } catch (err) {
+    //         console.error(err);
+    //     } finally {
+    //         makingOffer = false;
+    //     }
+    // };
 
     pc.oniceconnectionstatechange = async () => {
         if (pc.iceConnectionState === "failed") {
@@ -57,20 +60,27 @@
     };
 
     pc.onicecandidate = async ({ candidate }) => {
-        const json = JSON.stringify({ type: "IceCandidate", data: candidate });
-        await waitForWebSocket();
-        ws.send(json);
+        if (candidate !== null) {
+            await waitForWebSocket();
+            try {
+                const json = JSON.stringify({ type: "IceCandidate", data: candidate });
+                ws.send(json);
+            } catch (err) {
+                console.log(err);
+            }
+        }
     };
 
     pc.ontrack = ({ track, streams }) => {
+        console.log("ontrack");
         var el = document.createElement(track.kind)
         el.srcObject = streams[0]
         el.autoplay = true
         el.controls = true
 
-        track.onmute = () => {
-            el.parentNode.removeChild(el);
-        };
+        // track.onmute = () => {
+        //     el.parentNode.removeChild(el);
+        // };
 
         document.getElementById('remoteVideos').appendChild(el)
     };
@@ -79,6 +89,7 @@
     ws.onmessage = async (event) => {
         try {
             const message = JSON.parse(event.data);
+            console.log(message);
             switch (message.type) {
                 case "Sdp":
                     const description = message.data;
@@ -91,10 +102,11 @@
                         return;
                     }
 
-                    await pc.setRemoteDescription(description);
+                    await pc.setRemoteDescription(new RTCSessionDescription(description));
                     if (description.type === "offer") {
                         await pc.setLocalDescription();
                         const json = JSON.stringify({ type: "Sdp", data: pc.localDescription });
+                        console.log(pc.localDescription);
                         ws.send(json);
                     }
 

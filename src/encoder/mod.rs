@@ -11,7 +11,7 @@ use webrtc::rtp::{
     packet::Packet,
     sequence::{new_random_sequencer, Sequencer},
 };
-use webrtc_helper::{encoder::Encoder, util::data_rate::DataRate};
+use webrtc_helper::{encoder::Encoder, util::data_rate::TwccBandwidthEstimate};
 use windows::{
     core::Interface,
     Win32::{
@@ -28,21 +28,17 @@ use windows::{
 
 pub struct NvidiaEncoder {
     output: nvenc::EncoderOutput,
-    data_rate: Arc<AtomicU32>,
     payload_type: u8,
     ssrc: u32,
     timer_frequency: u64,
     sequencer: Box<dyn Sequencer + Send + Sync>,
     payloader: payloader::H264Payloader,
     packets: Vec<Packet>,
-    debug_counter: usize,
 }
 
 impl Encoder for NvidiaEncoder {
-    fn packets(&mut self, mtu: usize, data_rate: DataRate) -> &[Packet] {
-        let data_rate = data_rate.bits_per_sec() as u32;
-        self.debug_counter += 1;
-        self.data_rate.store(data_rate, Ordering::Release);
+    fn packets(&mut self) -> &[Packet] {
+        const MTU: usize = 1200;
 
         self.packets.clear();
 
@@ -61,7 +57,7 @@ impl Encoder for NvidiaEncoder {
             timestamp = ((lock.outputTimeStamp * 90000) / self.timer_frequency) as u32;
 
             if let Err(e) = self.payloader.payload(
-                mtu,
+                MTU - 12,
                 &bytes::Bytes::copy_from_slice(slice),
                 &mut self.packets,
             ) {
@@ -101,18 +97,16 @@ impl NvidiaEncoder {
         output: nvenc::EncoderOutput,
         payload_type: u8,
         ssrc: u32,
+        bandwidth_estimate: TwccBandwidthEstimate,
     ) -> Self {
         log::info!("NvidiaEncoder::new");
-
-        let data_rate = Arc::new(AtomicU32::new(0));
-        let data_rate_clone = data_rate.clone();
 
         std::thread::spawn(move || {
             NvidiaEncoder::encoder_input_loop(
                 screen_duplicator,
                 display_formats,
                 input,
-                data_rate_clone,
+                bandwidth_estimate,
             );
         });
 
@@ -124,14 +118,12 @@ impl NvidiaEncoder {
 
         NvidiaEncoder {
             output,
-            data_rate,
             payload_type,
             ssrc,
             timer_frequency,
             sequencer: Box::new(new_random_sequencer()),
             payloader: payloader::H264Payloader::default(),
             packets: Vec::new(),
-            debug_counter: 0,
         }
     }
 
@@ -139,19 +131,15 @@ impl NvidiaEncoder {
         mut screen_duplicator: ScreenDuplicator,
         display_formats: Vec<DXGI_FORMAT>,
         mut input: nvenc::EncoderInput<nvenc::DirectX11Device>,
-
-        data_rate: Arc<AtomicU32>,
+        bandwidth_estimate: TwccBandwidthEstimate,
     ) {
-        let mut prev_bitrate = 0;
-
-        while Arc::strong_count(&data_rate) > 1 {
-            let bitrate = data_rate.load(Ordering::Acquire);
-            if prev_bitrate != bitrate {
+        while let Ok(bandwidth_has_changed) = bandwidth_estimate.has_changed() {
+            if bandwidth_has_changed {
+                let bitrate = bandwidth_estimate.borrow().bits_per_sec() as u32;
                 if let Err(e) = input.update_average_bitrate(bitrate) {
                     log::error!("{e}");
                     panic!("Error trying to update bitrate");
                 }
-                prev_bitrate = bitrate;
             }
 
             let (resource, info) = loop {

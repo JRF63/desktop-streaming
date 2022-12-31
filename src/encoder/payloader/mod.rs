@@ -206,9 +206,21 @@ impl H264Payloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{sync::{atomic::AtomicBool, Arc}, io::Read};
+    use webrtc::{
+        media::Sample,
+        rtp_transceiver::rtp_codec::{
+            RTCRtpCodecCapability, RTCRtpCodecParameters, RTCRtpParameters,
+        },
+        track::track_local::{
+            track_local_static_sample::TrackLocalStaticSample, TrackLocal, TrackLocalContext,
+            TrackLocalWriter,
+        },
+        util::Unmarshal,
+    };
 
     const H264_CSD_BYTES: &'static [u8] = include_bytes!("h264-csd.bin");
-    const H264_INBAND_CSD_BYTES : &'static [u8] = include_bytes!("h264-inband-csd.bin");
+    const H264_INBAND_CSD_BYTES: &'static [u8] = include_bytes!("h264-inband-csd.bin");
 
     #[test]
     fn csd_fragment() {
@@ -224,7 +236,108 @@ mod tests {
         let mut packets = Vec::new();
         let mut payloader = H264Payloader::default();
         payloader
-            .payload(1200, &Bytes::from_static(H264_INBAND_CSD_BYTES), &mut packets)
+            .payload(
+                1200,
+                &Bytes::from_static(H264_INBAND_CSD_BYTES),
+                &mut packets,
+            )
             .expect("Failed to fragment codec specific data");
+    }
+
+    #[derive(Debug)]
+    struct DummyTrackLocalWriter;
+
+    #[async_trait::async_trait]
+    impl TrackLocalWriter for DummyTrackLocalWriter {
+        async fn write_rtp(&self, p: &webrtc::rtp::packet::Packet) -> webrtc::error::Result<usize> {
+            println!("{:?}", &p.payload[..20]);
+            Ok(0)
+        }
+
+        async fn write(&self, mut b: &[u8]) -> webrtc::error::Result<usize> {
+            let pkt = webrtc::rtp::packet::Packet::unmarshal(&mut b)?;
+            self.write_rtp(&pkt).await?;
+            Ok(b.len())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeTrackLocalContext {
+        id: String,
+        params: RTCRtpParameters,
+        ssrc: u32,
+        write_stream: Option<Arc<dyn TrackLocalWriter + Send + Sync>>,
+        paused: Arc<AtomicBool>,
+    }
+
+    fn create_track_local_context(t: FakeTrackLocalContext) -> TrackLocalContext {
+        unsafe { std::mem::transmute(t) }
+    }
+
+    #[tokio::test]
+    async fn meow() {
+        let capability = RTCRtpCodecCapability {
+            mime_type: "video/H264".to_owned(),
+            clock_rate: 90000,
+            channels: 0,
+            sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f"
+                .to_owned(),
+            rtcp_feedback: Vec::new(),
+        };
+        let track_local =
+            TrackLocalStaticSample::new(capability.clone(), "test".to_owned(), "0".to_owned());
+        let write_stream = Arc::new(DummyTrackLocalWriter);
+        let t = FakeTrackLocalContext {
+            id: "fake-context".to_owned(),
+            params: RTCRtpParameters {
+                header_extensions: Vec::new(),
+                codecs: vec![RTCRtpCodecParameters {
+                    capability,
+                    payload_type: 100,
+                    stats_id: "stats_id-0".to_owned(),
+                }],
+            },
+            ssrc: 0,
+            write_stream: Some(write_stream),
+            ..Default::default()
+        };
+        let t = create_track_local_context(t);
+        track_local.bind(&t).await.unwrap();
+
+        for i in 0..1 {
+            let mut data = Vec::new();
+
+            let file_name = format!("scratch/nalus/{i}.h264");
+            let mut file = std::fs::File::open(file_name).unwrap();
+            file.read_to_end(&mut data).unwrap();
+
+
+            track_local
+                .write_sample(&Sample {
+                    data: Bytes::from(data),
+                    ..Default::default()
+                })
+                .await.unwrap();
+        }
+    }
+
+    #[test]
+    fn arf() {
+        let mut payloader = H264Payloader::default();
+        let mut packets = Vec::new();
+
+        for i in 0..1 {
+            let mut data = Vec::new();
+
+            let file_name = format!("scratch/nalus/{i}.h264");
+            let mut file = std::fs::File::open(file_name).unwrap();
+            file.read_to_end(&mut data).unwrap();
+
+            payloader.payload(1200 - 12, &Bytes::from(data), &mut packets).unwrap();
+            
+            for p in &packets {
+                println!("{:?}", &p.payload[..20]);
+            }
+        }
     }
 }

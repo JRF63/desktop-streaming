@@ -9,6 +9,7 @@ use webrtc::{
 use webrtc_helper::{
     codecs::Codec,
     encoder::{Encoder, EncoderBuilder},
+    util::data_rate::TwccBandwidthEstimate
 };
 use windows::Win32::Graphics::{
     Direct3D11::ID3D11Device,
@@ -46,6 +47,7 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
         mut self: Box<Self>,
         codec_params: &RTCRtpCodecParameters,
         context: &TrackLocalContext,
+        bandwidth_estimate: TwccBandwidthEstimate,
     ) -> Box<dyn Encoder> {
         let screen_duplicator =
             match ScreenDuplicator::new(self.device, self.display_index, &self.display_formats) {
@@ -65,6 +67,8 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             }
         };
         let profile = nvenc::CodecProfile::H264High;
+
+        log::info!("NvidiaEncoderBuilder::build with profile {profile:?}");
 
         if let Err(e) = self.inner_builder.with_codec(codec) {
             log::error!("{e}");
@@ -143,6 +147,7 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             output,
             codec_params.payload_type,
             context.ssrc(),
+            bandwidth_estimate,
         ))
     }
 }
@@ -211,6 +216,7 @@ fn list_supported_codecs(
 
 impl NvidiaEncoderBuilder {
     pub fn new() -> Self {
+        log::info!("NvidiaEncoderBuilder::new");
         let device = match create_d3d11_device() {
             Ok(device) => device,
             Err(e) => {
@@ -225,6 +231,10 @@ impl NvidiaEncoderBuilder {
                 panic!("Error while creating the encoder");
             }
         };
+        if let Err(e) = inner_builder.repeat_csd() {
+            log::error!("{e}");
+            panic!("Error while setting encoder option");
+        }
 
         let id = INCREMENTAL_ID.fetch_add(1, Ordering::AcqRel);
         let display_index = 0; // default to the first; could be changed later
@@ -251,6 +261,7 @@ impl NvidiaEncoderBuilder {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_display_index(&mut self, display_index: u32) {
         self.display_index = display_index;
     }
