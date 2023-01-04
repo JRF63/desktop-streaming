@@ -5,17 +5,25 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>WebRTC Screen Duplicator Client</title>
+    <style>
+        .container {
+            display: flex;
+        }
+
+        video {
+            width: 100%;
+        }
+    </style>
 </head>
 
 <body>
-    <h3> Video </h3>
-    <div id="remoteVideos"></div>
+    <div id="video" class="container"></div>
 </body>
 
 <script>
     const ws = new WebSocket('ws://' + location.host + '/ws');
     const pc = new RTCPeerConnection();
-    const polite = true;
+    const polite = false;
 
     let ignoreOffer = false;
     let makingOffer = false;
@@ -82,7 +90,7 @@
         //     el.parentNode.removeChild(el);
         // };
 
-        document.getElementById('remoteVideos').appendChild(el)
+        document.getElementById('video').appendChild(el)
     };
 
     // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation#implementing_perfect_negotiation
@@ -98,6 +106,7 @@
                         (makingOffer || pc.signalingState !== "stable");
 
                     ignoreOffer = !polite && offerCollision;
+                    console.log('ignoreOffer: ' + ignoreOffer);
                     if (ignoreOffer) {
                         return;
                     }

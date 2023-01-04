@@ -1,15 +1,15 @@
 use crate::{capture::ScreenDuplicator, device::create_d3d11_device};
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::{collections::HashMap, sync::Arc};
+
 use webrtc::{
-    rtp_transceiver::rtp_codec::RTCRtpCodecParameters, track::track_local::TrackLocalContext,
+    rtp_transceiver::{rtp_codec::RTCRtpCodecCapability, RTCRtpTransceiver},
+    track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 use webrtc_helper::{
-    codecs::Codec,
-    encoder::{Encoder, EncoderBuilder},
-    util::data_rate::TwccBandwidthEstimate
+    codecs::{Codec, CodecType},
+    encoder::EncoderBuilder,
+    peer::IceConnectionState,
+    util::data_rate::TwccBandwidthEstimate,
 };
 use windows::Win32::Graphics::{
     Direct3D11::ID3D11Device,
@@ -19,12 +19,11 @@ use windows::Win32::Graphics::{
     },
 };
 
-static INCREMENTAL_ID: AtomicUsize = AtomicUsize::new(0);
-
 pub struct NvidiaEncoderBuilder {
     inner_builder: nvenc::EncoderBuilder<nvenc::DirectX11Device>,
     device: ID3D11Device,
     id: String,
+    stream_id: String,
     display_index: u32,
     display_formats: Vec<DXGI_FORMAT>,
     supported_codecs: Vec<Codec>,
@@ -36,7 +35,11 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
     }
 
     fn stream_id(&self) -> &str {
-        "screen-duplicator"
+        &self.stream_id
+    }
+
+    fn codec_type(&self) -> CodecType {
+        CodecType::Video
     }
 
     fn supported_codecs(&self) -> &[Codec] {
@@ -45,41 +48,57 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
 
     fn build(
         mut self: Box<Self>,
-        codec_params: &RTCRtpCodecParameters,
-        context: &TrackLocalContext,
+        rtp_track: Arc<TrackLocalStaticRTP>,
+        transceiver: Arc<RTCRtpTransceiver>,
+        ice_connection_state: IceConnectionState,
         bandwidth_estimate: TwccBandwidthEstimate,
-    ) -> Box<dyn Encoder> {
+        codec_capability: RTCRtpCodecCapability,
+        ssrc: u32,
+        payload_type: u8,
+    ) {
+        if !self.is_codec_supported(&codec_capability) {
+            panic!("Codec not supported");
+        }
+
         let screen_duplicator =
             match ScreenDuplicator::new(self.device, self.display_index, &self.display_formats) {
                 Ok(duplicator) => duplicator,
                 Err(e) => {
-                    log::error!("{e}");
-                    panic!("Failed to create `ScreenDuplicator`");
+                    panic!("Failed to create `ScreenDuplicator`: {e}");
                 }
             };
 
-        let codec = {
-            match codec_params.capability.mime_type.as_str() {
-                "video/H264" => nvenc::Codec::H264,
-                "video/H265" => nvenc::Codec::Hevc,
+        let (codec, profile) = {
+            match codec_capability.mime_type.as_str() {
+                "video/H264" => {
+                    let profile =
+                        match h264_profile_from_sdp_fmtp_line(&codec_capability.sdp_fmtp_line) {
+                            Some(profile) => profile,
+                            None => panic!(
+                                "Unable to parse {} as H.264 profile",
+                                codec_capability.sdp_fmtp_line
+                            ),
+                        };
+                    (nvenc::Codec::H264, profile)
+                }
+                "video/H265" => {
+                    todo!("Implement HEVC parsing")
+                }
                 "video/AV1" => todo!("AV1 is not supported by the nvenc version used"),
                 _ => panic!("Unsupported codec"),
             }
         };
-        let profile = nvenc::CodecProfile::H264High;
 
-        log::info!("NvidiaEncoderBuilder::build with profile {profile:?}");
+        log::info!("NvidiaEncoderBuilder::build with codec {codec:?} and profile {profile:?}");
 
         if let Err(e) = self.inner_builder.with_codec(codec) {
-            log::error!("{e}");
-            panic!("Encoder does not support the codec `{codec:?}`");
+            panic!("Encoder does not support the codec `{codec:?}`: {e}");
         }
 
         let supported_encode_presets = match self.inner_builder.supported_encode_presets(codec) {
             Ok(supported_encode_presets) => supported_encode_presets,
             Err(e) => {
-                log::error!("{e}");
-                panic!("Failed to query encode presets");
+                panic!("Failed to query encode presets: {e}");
             }
         };
 
@@ -108,9 +127,9 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
                 // TODO: set_rc_mode(rc_mode)
                 Ok(())
             };
+
         if let Err(e) = configure_encoder(&mut self.inner_builder) {
-            log::error!("{e}");
-            panic!("Error configuring encoder");
+            panic!("Error configuring encoder: {e}");
         }
 
         let (width, height, texture_format, refresh_ratio) = {
@@ -135,20 +154,69 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             {
                 Ok((input, output)) => (input, output),
                 Err(e) => {
-                    log::error!("{e}");
-                    panic!("Failed to build encoder");
+                    panic!("Failed to build encoder: {e}");
                 }
             };
 
-        Box::new(super::NvidiaEncoder::new(
-            screen_duplicator,
-            self.display_formats,
-            input,
-            output,
-            codec_params.payload_type,
-            context.ssrc(),
-            bandwidth_estimate,
-        ))
+        //         Box::new(super::NvidiaEncoder::new(
+        //             screen_duplicator,
+        //             self.display_formats,
+        //             input,
+        //             output,
+        //             codec_params.payload_type,
+        //             context.ssrc(),
+        //             bandwidth_estimate,
+        //         ))
+    }
+}
+
+impl NvidiaEncoderBuilder {
+    pub fn new(id: String, stream_id: String) -> NvidiaEncoderBuilder {
+        log::info!("NvidiaEncoderBuilder::new");
+        let device = match create_d3d11_device() {
+            Ok(device) => device,
+            Err(e) => {
+                panic!("Unable to create D3D11Device: {e}");
+            }
+        };
+        let mut inner_builder = match nvenc::EncoderBuilder::new(device.clone()) {
+            Ok(inner_builder) => inner_builder,
+            Err(e) => {
+                log::error!("{e}");
+                panic!("Error while creating the encoder: {e}");
+            }
+        };
+        if let Err(e) = inner_builder.repeat_csd() {
+            panic!("Error while setting encoder option: {e}");
+        }
+
+        let display_index = 0; // default to the first; could be changed later
+        let display_formats = vec![
+            DXGI_FORMAT_B8G8R8A8_UNORM,
+            DXGI_FORMAT_R10G10B10A2_UNORM,
+            DXGI_FORMAT_R8G8B8A8_UNORM,
+        ];
+        let supported_codecs = match list_supported_codecs(&mut inner_builder) {
+            Ok(supported_codecs) => supported_codecs,
+            Err(e) => {
+                panic!("Unable to list codecs: {e}");
+            }
+        };
+
+        NvidiaEncoderBuilder {
+            inner_builder,
+            device,
+            id,
+            stream_id,
+            display_index,
+            display_formats,
+            supported_codecs,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn set_display_index(&mut self, display_index: u32) {
+        self.display_index = display_index;
     }
 }
 
@@ -214,55 +282,59 @@ fn list_supported_codecs(
     Ok(codecs)
 }
 
-impl NvidiaEncoderBuilder {
-    pub fn new() -> Self {
-        log::info!("NvidiaEncoderBuilder::new");
-        let device = match create_d3d11_device() {
-            Ok(device) => device,
-            Err(e) => {
-                log::error!("{e}");
-                panic!("Unable to create D3D11Device");
+// FIXME: Parsing is incomplete and not very efficient. Use regex.
+fn h264_profile_from_sdp_fmtp_line(sdp_fmtp_line: &str) -> Option<nvenc::CodecProfile> {
+    if let Some((_, id)) = sdp_fmtp_line.split_once("profile-level-id=") {
+        if id.len() >= 6 {
+            if id.starts_with("42") {
+                return Some(nvenc::CodecProfile::H264Baseline);
+            } else if id.starts_with("4d") {
+                return Some(nvenc::CodecProfile::H264Main);
+            } else if id.starts_with("64") {
+                return Some(nvenc::CodecProfile::H264High);
             }
-        };
-        let mut inner_builder = match nvenc::EncoderBuilder::new(device.clone()) {
-            Ok(inner_builder) => inner_builder,
-            Err(e) => {
-                log::error!("{e}");
-                panic!("Error while creating the encoder");
-            }
-        };
-        if let Err(e) = inner_builder.repeat_csd() {
-            log::error!("{e}");
-            panic!("Error while setting encoder option");
-        }
-
-        let id = INCREMENTAL_ID.fetch_add(1, Ordering::AcqRel);
-        let display_index = 0; // default to the first; could be changed later
-        let display_formats = vec![
-            DXGI_FORMAT_B8G8R8A8_UNORM,
-            DXGI_FORMAT_R10G10B10A2_UNORM,
-            DXGI_FORMAT_R8G8B8A8_UNORM,
-        ];
-        let supported_codecs = match list_supported_codecs(&mut inner_builder) {
-            Ok(supported_codecs) => supported_codecs,
-            Err(e) => {
-                log::error!("{e}");
-                panic!("Unable to list codecs");
-            }
-        };
-
-        Self {
-            inner_builder,
-            device,
-            id: format!("{}", id),
-            display_index,
-            display_formats,
-            supported_codecs,
         }
     }
 
-    #[allow(dead_code)]
-    pub fn set_display_index(&mut self, display_index: u32) {
-        self.display_index = display_index;
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn h264_ftmp_line_parsing() {
+        let test_cases = [
+            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
+            "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f",
+            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+            "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f",
+            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f",
+            "level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=4d001f",
+            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f",
+            // reordered
+            "level-asymmetry-allowed=1;profile-level-id=42001f;packetization-mode=1",
+            "profile-level-id=42001f;level-asymmetry-allowed=1;packetization-mode=1",
+        ];
+
+        let profiles = [
+            nvenc::CodecProfile::H264Baseline,
+            nvenc::CodecProfile::H264Baseline,
+            nvenc::CodecProfile::H264Baseline,
+            nvenc::CodecProfile::H264Baseline,
+            nvenc::CodecProfile::H264Main,
+            nvenc::CodecProfile::H264Main,
+            nvenc::CodecProfile::H264High,
+            nvenc::CodecProfile::H264Baseline,
+            nvenc::CodecProfile::H264Baseline,
+        ];
+
+        for (sdp_fmtp_line, profile) in test_cases.iter().zip(profiles) {
+            assert_eq!(
+                h264_profile_from_sdp_fmtp_line(sdp_fmtp_line),
+                Some(profile)
+            );
+        }
     }
 }
