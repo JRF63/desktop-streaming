@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Modified from rtp::codecs::h264::H264Payloader to allow directly sending the packets without
 //! allocating a Vec and annotated infrequently encountered branches with #[cold].
 
@@ -26,26 +24,18 @@ pub struct H264Payloader {
     pps_nalu: Option<Bytes>,
 }
 
-pub const STAPA_NALU_TYPE: u8 = 24;
-pub const FUA_NALU_TYPE: u8 = 28;
-pub const FUB_NALU_TYPE: u8 = 29;
-pub const SPS_NALU_TYPE: u8 = 7;
-pub const PPS_NALU_TYPE: u8 = 8;
-pub const AUD_NALU_TYPE: u8 = 9;
-pub const FILLER_NALU_TYPE: u8 = 12;
+const FUA_NALU_TYPE: u8 = 28;
+const SPS_NALU_TYPE: u8 = 7;
+const PPS_NALU_TYPE: u8 = 8;
+const AUD_NALU_TYPE: u8 = 9;
+const FILLER_NALU_TYPE: u8 = 12;
 
-pub const FUA_HEADER_SIZE: usize = 2;
-pub const STAPA_HEADER_SIZE: usize = 1;
-pub const STAPA_NALU_LENGTH_SIZE: usize = 2;
+const FUA_HEADER_SIZE: usize = 2;
 
-pub const NALU_TYPE_BITMASK: u8 = 0x1F;
-pub const NALU_REF_IDC_BITMASK: u8 = 0x60;
-pub const FU_START_BITMASK: u8 = 0x80;
-pub const FU_END_BITMASK: u8 = 0x40;
+const NALU_TYPE_BITMASK: u8 = 0x1F;
+const NALU_REF_IDC_BITMASK: u8 = 0x60;
 
-pub const OUTPUT_STAP_AHEADER: u8 = 0x78;
-
-pub static ANNEXB_NALUSTART_CODE: Bytes = Bytes::from_static(&[0x00, 0x00, 0x00, 0x01]);
+const OUTPUT_STAP_AHEADER: u8 = 0x78;
 
 impl H264Payloader {
     fn next_ind(nalu: &Bytes, start: usize) -> (isize, isize) {
@@ -185,8 +175,7 @@ impl H264Payloader {
             return Ok(());
         }
 
-        // `nalu.len()` > 0 because of the check above
-        let buf_size = (nalu.len() - 1) / mtu + 1;
+        let buf_size = div_ceil(nalu.len(), mtu);
 
         // This is brought outside the loop to decrease allocation/deallocation.
         let mut out = BytesMut::with_capacity(buf_size);
@@ -284,6 +273,11 @@ impl H264Payloader {
         Ok(())
     }
 
+    #[cold]
+    fn emit_unhandled_nalu() -> Result<(), webrtc::Error> {
+        Ok(())
+    }
+
     async fn emit<T>(
         &mut self,
         header: &mut Header,
@@ -302,21 +296,19 @@ impl H264Payloader {
         let nalu_ref_idc = nalu[0] & NALU_REF_IDC_BITMASK;
 
         if nalu_type == AUD_NALU_TYPE || nalu_type == FILLER_NALU_TYPE {
-            return Ok(());
+            Self::emit_unhandled_nalu()
         } else if nalu_type == SPS_NALU_TYPE {
-            return self
-                .process_parameter_sets(header, Some(nalu.clone()), None, mtu, writer)
-                .await;
+            self.process_parameter_sets(header, Some(nalu.clone()), None, mtu, writer)
+                .await
         } else if nalu_type == PPS_NALU_TYPE {
-            return self
-                .process_parameter_sets(header, None, Some(nalu.clone()), mtu, writer)
-                .await;
-        }
-
-        if nalu.len() <= mtu {
-            Self::emit_single_nalu(header, nalu, mtu, writer).await
+            self.process_parameter_sets(header, None, Some(nalu.clone()), mtu, writer)
+                .await
         } else {
-            Self::emit_fragmented(header, nalu_type, nalu_ref_idc, nalu, mtu, writer).await
+            if nalu.len() <= mtu {
+                Self::emit_single_nalu(header, nalu, mtu, writer).await
+            } else {
+                Self::emit_fragmented(header, nalu_type, nalu_ref_idc, nalu, mtu, writer).await
+            }
         }
     }
 
@@ -365,6 +357,21 @@ impl H264Payloader {
     }
 }
 
+/// Calculate the quotient, rounding up.
+///
+/// Implementation taken from unstable Rust feature in [`std`][std].
+///
+/// [std]: https://github.com/rust-lang/rust/blob/b15ca6635f752fefebfd101aa944c6167128183c/library/core/src/num/uint_macros.rs#L2059
+const fn div_ceil(lhs: usize, rhs: usize) -> usize {
+    let d = lhs / rhs;
+    let r = lhs % rhs;
+    if r > 0 && rhs > 0 {
+        d + 1
+    } else {
+        d
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,8 +391,8 @@ mod tests {
         util::{MarshalSize, Unmarshal},
     };
 
-    const H264_CSD_BYTES: &'static [u8] = include_bytes!("h264-csd.bin");
-    const H264_INBAND_CSD_BYTES: &'static [u8] = include_bytes!("h264-inband-csd.bin");
+    // const H264_CSD_BYTES: &'static [u8] = include_bytes!("h264-csd.bin");
+    // const H264_INBAND_CSD_BYTES: &'static [u8] = include_bytes!("h264-inband-csd.bin");
 
     #[derive(Debug)]
     struct PacketVec(Mutex<Vec<rtp::packet::Packet>>);

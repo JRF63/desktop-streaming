@@ -1,6 +1,6 @@
+use super::encoder::start_encoder;
 use crate::{capture::ScreenDuplicator, device::create_d3d11_device};
 use std::{collections::HashMap, sync::Arc};
-
 use webrtc::{
     rtp_transceiver::{rtp_codec::RTCRtpCodecCapability, RTCRtpTransceiver},
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
@@ -61,7 +61,7 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
         }
 
         let screen_duplicator =
-            match ScreenDuplicator::new(self.device, self.display_index, &self.display_formats) {
+            match ScreenDuplicator::new(self.device, self.display_index, self.display_formats) {
                 Ok(duplicator) => duplicator,
                 Err(e) => {
                     panic!("Failed to create `ScreenDuplicator`: {e}");
@@ -158,15 +158,21 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
                 }
             };
 
-        //         Box::new(super::NvidiaEncoder::new(
-        //             screen_duplicator,
-        //             self.display_formats,
-        //             input,
-        //             output,
-        //             codec_params.payload_type,
-        //             context.ssrc(),
-        //             bandwidth_estimate,
-        //         ))
+        let handle = tokio::runtime::Handle::current();
+        handle.block_on(async {
+            start_encoder(
+                screen_duplicator,
+                input,
+                output,
+                rtp_track,
+                transceiver,
+                ice_connection_state,
+                bandwidth_estimate,
+                payload_type,
+                ssrc,
+            )
+            .await;
+        });
     }
 }
 

@@ -1,7 +1,7 @@
 use super::payloader::H264Payloader;
 use crate::capture::ScreenDuplicator;
 use std::sync::Arc;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use webrtc::{
     ice_transport::ice_connection_state::RTCIceConnectionState,
     rtcp::{
@@ -10,36 +10,102 @@ use webrtc::{
             full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
         },
     },
-    rtp::{header::Header, packet::Packet},
-    rtp_transceiver::{rtp_codec::RTCRtpCodecCapability, RTCRtpTransceiver},
+    rtp::header::Header,
+    rtp_transceiver::RTCRtpTransceiver,
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
-use webrtc_helper::{
-    codecs::{Codec, CodecType},
-    peer::IceConnectionState,
-    util::data_rate::TwccBandwidthEstimate,
-};
-use windows::{
-    core::Interface,
-    Win32::{
-        Graphics::{
-            Direct3D11::{ID3D11Device, ID3D11Texture2D},
-            Dxgi::{
-                Common::DXGI_FORMAT,
-                {DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT},
-            },
-        },
-        System::Performance::QueryPerformanceFrequency,
-    },
+use webrtc_helper::{peer::IceConnectionState, util::data_rate::TwccBandwidthEstimate};
+use windows::Win32::{
+    Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT},
+    System::Performance::QueryPerformanceFrequency,
 };
 
 const RTP_MTU: usize = 1200;
 const RTCP_MAX_MTU: usize = 1500;
+const MIN_BITRATE_MBPS: u32 = 10_000;
+const MAX_BITRATE_MBPS: u32 = 100_000_000;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum RtcpEvent {
     Pli(PictureLossIndication),
     Fir(FullIntraRequest),
+}
+
+struct NvidiaEncoderInput {
+    screen_duplicator: ScreenDuplicator,
+    acquire_timeout_millis: u32,
+    input: nvenc::EncoderInput<nvenc::DirectX11Device>,
+    bandwidth_estimate: TwccBandwidthEstimate,
+    rtcp_rx: UnboundedReceiver<RtcpEvent>,
+}
+
+impl NvidiaEncoderInput {
+    fn new(
+        screen_duplicator: ScreenDuplicator,
+        input: nvenc::EncoderInput<nvenc::DirectX11Device>,
+        bandwidth_estimate: TwccBandwidthEstimate,
+        rtcp_rx: UnboundedReceiver<RtcpEvent>,
+    ) -> NvidiaEncoderInput {
+        // Half of frame interval to allow processing event in-between
+        let acquire_timeout_millis = (screen_duplicator.frame_interval() / 2).as_millis() as u32;
+        NvidiaEncoderInput {
+            screen_duplicator,
+            acquire_timeout_millis,
+            input,
+            bandwidth_estimate,
+            rtcp_rx,
+        }
+    }
+
+    fn update_bitrate(&mut self) {
+        let bitrate = self.bandwidth_estimate.borrow().bits_per_sec() as u32;
+        let bitrate = bitrate.clamp(MIN_BITRATE_MBPS, MAX_BITRATE_MBPS);
+        if let Err(e) = self.input.update_average_bitrate(bitrate) {
+            log::error!("Error trying to update bitrate: {e}");
+        }
+    }
+
+    fn encode(&mut self) {
+        match self
+            .screen_duplicator
+            .acquire_frame(self.acquire_timeout_millis)
+        {
+            Ok((acquired_image, info)) => {
+                let timestamp = u64::from_ne_bytes(info.LastPresentTime.to_ne_bytes());
+                self.input
+                    .encode_frame(acquired_image, timestamp, || {
+                        self.screen_duplicator.release_frame().unwrap()
+                    })
+                    .unwrap();
+            }
+            Err(e) => {
+                match e.code() {
+                    DXGI_ERROR_WAIT_TIMEOUT => {
+                        if let Ok(true) = self.bandwidth_estimate.has_changed() {
+                            self.update_bitrate();
+                        }
+
+                        match self.rtcp_rx.try_recv() {
+                            Ok(RtcpEvent::Pli(_pli)) => {
+                                // FIXME: Properly handle SSRC
+                                self.input.force_idr_on_next();
+                            }
+                            Ok(RtcpEvent::Fir(_fir)) => {
+                                // FIXME: Properly handle SSRC and seq nums
+                                self.input.force_idr_on_next();
+                            }
+                            _ => (), // Ignore errors
+                        }
+                    }
+                    DXGI_ERROR_ACCESS_LOST => {
+                        // Reset duplicator then move on to next frame acquisition
+                        self.screen_duplicator.reset_output_duplicator().unwrap();
+                    }
+                    _ => panic!("{}", e),
+                }
+            }
+        }
+    }
 }
 
 struct NvidiaEncoderOutput {
@@ -109,70 +175,13 @@ impl NvidiaEncoderOutput {
         });
 
         if let Err(e) = encode_result {
-            panic!("Error while waiting for output: {e}")
-        }
-    }
-
-    fn encoder_input_loop(
-        mut screen_duplicator: ScreenDuplicator,
-        display_formats: Vec<DXGI_FORMAT>,
-        mut input: nvenc::EncoderInput<nvenc::DirectX11Device>,
-        bandwidth_estimate: TwccBandwidthEstimate,
-        rtcp_rx: UnboundedReceiver<RtcpEvent>,
-    ) {
-        while let Ok(bandwidth_has_changed) = bandwidth_estimate.has_changed() {
-            if bandwidth_has_changed {
-                let bitrate = bandwidth_estimate.borrow().bits_per_sec() as u32;
-                if let Err(e) = input.update_average_bitrate(bitrate) {
-                    log::error!("{e}");
-                    panic!("Error trying to update bitrate");
-                }
-            }
-
-            let (resource, info) = loop {
-                match screen_duplicator.acquire_frame() {
-                    Ok(r) => break r,
-                    Err(e) => {
-                        match e.code() {
-                            DXGI_ERROR_WAIT_TIMEOUT => {
-                                // log::info!("AcquireNextFrame timed-out");
-                            }
-                            DXGI_ERROR_ACCESS_LOST => {
-                                // Must call reset_output_duplicator if AccessLost
-                                screen_duplicator
-                                    .reset_output_duplicator(&display_formats)
-                                    .unwrap();
-                            }
-                            _ => panic!("{}", e),
-                        }
-                    }
-                }
-            };
-
-            // `IDXGIResource` to `ID3D11Texture2D` should never fail
-            let acquired_image: ID3D11Texture2D = resource.cast().unwrap();
-
-            let timestamp = u64::from_ne_bytes(info.LastPresentTime.to_ne_bytes());
-            input
-                .encode_frame(acquired_image, timestamp, || {
-                    screen_duplicator.release_frame().unwrap()
-                })
-                .unwrap();
+            log::error!("Error while waiting for output: {e}")
         }
     }
 }
 
-struct NvidiaEncoderInput {
+pub async fn start_encoder(
     screen_duplicator: ScreenDuplicator,
-    display_formats: Vec<DXGI_FORMAT>,
-    input: nvenc::EncoderInput<nvenc::DirectX11Device>,
-    bandwidth_estimate: TwccBandwidthEstimate,
-    rtcp_rx: UnboundedReceiver<RtcpEvent>,
-}
-
-pub async fn start2(
-    screen_duplicator: ScreenDuplicator,
-    display_formats: Vec<DXGI_FORMAT>,
     input: nvenc::EncoderInput<nvenc::DirectX11Device>,
     output: nvenc::EncoderOutput,
     rtp_track: Arc<TrackLocalStaticRTP>,
@@ -182,25 +191,12 @@ pub async fn start2(
     payload_type: u8,
     ssrc: u32,
 ) {
-    let output = NvidiaEncoderOutput::new(output, rtp_track, payload_type, ssrc);
-}
-
-pub async fn start(
-    screen_duplicator: ScreenDuplicator,
-    display_formats: Vec<DXGI_FORMAT>,
-    input: nvenc::EncoderInput<nvenc::DirectX11Device>,
-    transceiver: Arc<RTCRtpTransceiver>,
-    mut ice_connection_state: IceConnectionState,
-    bandwidth_estimate: TwccBandwidthEstimate,
-) {
     while *ice_connection_state.borrow() != RTCIceConnectionState::Connected {
         if let Err(_) = ice_connection_state.changed().await {
             log::error!("Peer exited before ICE became connected");
             return;
         }
     }
-
-    // let encoder = NvidiaEncoder::new(output, rtp_track, payload_type, ssrc);
 
     let (rtcp_tx, rtcp_rx) = unbounded_channel();
 
@@ -227,17 +223,26 @@ pub async fn start(
         });
     }
 
+    let mut input = NvidiaEncoderInput::new(screen_duplicator, input, bandwidth_estimate, rtcp_rx);
+    let mut output = NvidiaEncoderOutput::new(output, rtp_track, payload_type, ssrc);
+
+    let ice_1 = ice_connection_state;
+    let ice_2 = ice_1.clone();
+
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-        handle.block_on(async {
-            NvidiaEncoderOutput::encoder_input_loop(
-                screen_duplicator,
-                display_formats,
-                input,
-                bandwidth_estimate,
-                rtcp_rx,
-            );
-        });
+        while *ice_1.borrow() == RTCIceConnectionState::Connected {
+            handle.block_on(async {
+                input.encode();
+            });
+        }
+    });
+
+    let handle = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        while *ice_2.borrow() == RTCIceConnectionState::Connected {
+            output.write_packets(&handle);
+        }
     });
 }
 

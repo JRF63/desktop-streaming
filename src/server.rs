@@ -106,7 +106,7 @@ async fn process_websocket(socket: WebSocket) {
 
     tokio::spawn(async move {
         let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Offerer);
-        encoder_builder.with_encoder(Box::new(NvidiaEncoderBuilder::new()));
+        encoder_builder.with_encoder(Box::new(NvidiaEncoderBuilder::new("display-mirror".to_owned(), "0".to_owned())));
         let encoder = encoder_builder.build().await.unwrap();
         while !encoder.is_closed() {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
