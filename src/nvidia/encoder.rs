@@ -1,5 +1,4 @@
-use super::payloader::H264Payloader;
-use crate::capture::ScreenDuplicator;
+use crate::{capture::ScreenDuplicator, payloader::H264Payloader};
 use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use webrtc::{
@@ -46,7 +45,7 @@ impl NvidiaEncoderInput {
         bandwidth_estimate: TwccBandwidthEstimate,
         rtcp_rx: UnboundedReceiver<RtcpEvent>,
     ) -> NvidiaEncoderInput {
-        // Half of frame interval to allow processing event in-between
+        // Half of frame interval to allow processing RTCP in-between
         let acquire_timeout_millis = (screen_duplicator.frame_interval() / 2).as_millis() as u32;
         NvidiaEncoderInput {
             screen_duplicator,
@@ -191,6 +190,7 @@ pub async fn start_encoder(
     payload_type: u8,
     ssrc: u32,
 ) {
+    log::info!("start_encoder");
     while *ice_connection_state.borrow() != RTCIceConnectionState::Connected {
         if let Err(_) = ice_connection_state.changed().await {
             log::error!("Peer exited before ICE became connected");

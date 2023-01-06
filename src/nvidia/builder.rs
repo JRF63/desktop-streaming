@@ -159,7 +159,7 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             };
 
         let handle = tokio::runtime::Handle::current();
-        handle.block_on(async {
+        handle.spawn(async move {
             start_encoder(
                 screen_duplicator,
                 input,

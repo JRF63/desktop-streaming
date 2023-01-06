@@ -1,4 +1,4 @@
-use crate::encoder::NvidiaEncoderBuilder;
+use crate::nvidia::NvidiaEncoderBuilder;
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -53,7 +53,7 @@ impl Signaler for WebSocketSignaler {
     async fn send(&self, msg: Message) -> std::io::Result<()> {
         if let Ok(s) = serde_json::to_string(&msg) {
             let ws_msg = warp::ws::Message::text(s);
-            if let Err(_) = self.tx.lock().await.send(ws_msg).await {
+            if let Ok(_) = self.tx.lock().await.send(ws_msg).await {
                 return Ok(());
             }
         }
