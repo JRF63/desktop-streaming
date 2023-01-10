@@ -116,8 +116,7 @@ async fn process_websocket(socket: WebSocket) {
         let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Answerer);
         encoder_builder.with_encoder(Box::new(NvidiaEncoderBuilder::new("display-mirror".to_owned(), "0".to_owned())));
         let encoder = encoder_builder.build().await.unwrap();
-        while !encoder.is_closed() {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        }
+        encoder.is_closed().await;
+        DUPLICATOR_RUNNING.store(false, Ordering::Release);
     });
 }
