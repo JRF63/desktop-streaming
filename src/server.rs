@@ -3,7 +3,7 @@ use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::atomic::{AtomicBool, Ordering}};
 use tokio::sync::Mutex;
 use warp::{
     http::{Response, StatusCode},
@@ -19,6 +19,8 @@ use webrtc_helper::{
 #[cfg(not(debug_assertions))]
 const INDEX: &'static str = include_str!("html/index.html");
 const NOT_FOUND: &'static str = include_str!("html/not_found.html");
+
+static DUPLICATOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
 pub struct WebSocketSignaler {
     tx: Mutex<SplitSink<WebSocket, warp::ws::Message>>,
@@ -98,6 +100,12 @@ pub async fn http_server(addr: impl Into<SocketAddr>) {
 }
 
 async fn process_websocket(socket: WebSocket) {
+    if DUPLICATOR_RUNNING.load(Ordering::Acquire) {
+        return;
+    }
+
+    DUPLICATOR_RUNNING.store(true, Ordering::Release);
+
     let websocket_signaler = WebSocketSignaler::new(socket);
 
     // TODO: Debug
@@ -105,7 +113,7 @@ async fn process_websocket(socket: WebSocket) {
     log::info!("WebSocket upgrade");
 
     tokio::spawn(async move {
-        let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Offerer);
+        let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Answerer);
         encoder_builder.with_encoder(Box::new(NvidiaEncoderBuilder::new("display-mirror".to_owned(), "0".to_owned())));
         let encoder = encoder_builder.build().await.unwrap();
         while !encoder.is_closed() {

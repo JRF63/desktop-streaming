@@ -2,10 +2,7 @@ use windows::{
     core::{Interface, Result},
     Win32::Graphics::{
         Direct3D::{self, D3D_DRIVER_TYPE_HARDWARE},
-        Direct3D11::{
-            D3D11CreateDevice, ID3D11Device, ID3D11Multithread, D3D11_CREATE_DEVICE_DEBUG,
-            D3D11_CREATE_DEVICE_FLAG, D3D11_SDK_VERSION,
-        },
+        Direct3D11::{self, D3D11CreateDevice, ID3D11Device, ID3D11Multithread, D3D11_SDK_VERSION},
     },
 };
 
@@ -21,12 +18,11 @@ pub fn create_d3d11_device() -> Result<ID3D11Device> {
         Direct3D::D3D_FEATURE_LEVEL_9_1,
     ];
 
-    let mut flags = D3D11_CREATE_DEVICE_FLAG(0);
-
     #[cfg(debug_assertions)]
-    {
-        flags |= D3D11_CREATE_DEVICE_DEBUG;
-    }
+    let flags = Direct3D11::D3D11_CREATE_DEVICE_DEBUG;
+
+    #[cfg(not(debug_assertions))]
+    let flags = Direct3D11::D3D11_CREATE_DEVICE_FLAG(0);
 
     let mut device = None;
 

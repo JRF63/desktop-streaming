@@ -6,60 +6,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>WebRTC Screen Duplicator Client</title>
     <style>
-        .container {
+        #main-container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #video-container {
+            display: flex;
+            height: 50vh;
+        }
+
+        #controls {
             display: flex;
         }
 
         video {
             width: 100%;
         }
+
+        video::-webkit-media-controls-panel {
+            display: none !important;
+        }
     </style>
 </head>
 
 <body>
-    <div id="video" class="container"></div>
+    <div id="main-container">
+        <div id="video-container">
+            <video id="main-video"></video>
+        </div>
+        <div id="controls">
+            <button id="start-button" onclick="startConnection()">Start</button>
+            <button id="fullscreen-toggle" onclick="requestFullscreenVideo()" disabled>Fullscreen</button>
+        </div>
+    </div>
 </body>
 
 <script>
-    const ws = new WebSocket('ws://' + location.host + '/ws');
+    const ws = new WebSocket("ws://" + location.host + "/ws");
     const pc = new RTCPeerConnection();
-    const polite = false;
+    const videoElement = document.getElementById("main-video");
+    const videoContainer = document.getElementById("video-container");
 
-    let ignoreOffer = false;
-    let makingOffer = false;
-
-    try {
-        pc.addTransceiver('video', { 'direction': 'recvonly' });
-    } catch (err) {
-        console.log(err);
+    async function startConnection() {
+        try {
+            pc.addTransceiver("video", { direction: "recvonly" });
+        } catch (err) {
+            console.log(err);
+        }
+        document.getElementById("start-button").disabled = true;
+        document.getElementById("fullscreen-toggle").disabled = false;
     }
 
-    function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    async function waitForWebSocket() {
+    async function webSockedConnected() {
         while (true) {
             if (ws.readyState === WebSocket.OPEN) {
                 return;
             }
-            await sleep(500);
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
 
-    // pc.onnegotiationneeded = async () => {
-    //     try {
-    //         makingOffer = true;
-    //         await pc.setLocalDescription();
-    //         const json = JSON.stringify({ type: "Sdp", data: pc.localDescription });
-    //         await waitForWebSocket();
-    //         ws.send(json);
-    //     } catch (err) {
-    //         console.error(err);
-    //     } finally {
-    //         makingOffer = false;
-    //     }
-    // };
+    async function sendOnWebSocket(type, data) {
+        await webSockedConnected();
+        const json = JSON.stringify({ type: type, data: data });
+        ws.send(json);
+    }
+
+    async function requestFullscreenVideo() {
+        await videoElement.requestFullscreen({ navigationUI: "hide" });
+    }
+
+    pc.onnegotiationneeded = async () => {
+        try {
+            await pc.setLocalDescription();
+            await sendOnWebSocket("Sdp", pc.localDescription);
+        } catch (err) {
+            console.error(err);
+        }
+    };
 
     pc.oniceconnectionstatechange = async () => {
         if (pc.iceConnectionState === "failed") {
@@ -68,65 +93,42 @@
     };
 
     pc.onicecandidate = async ({ candidate }) => {
+        // candidate === null if there will no more ICE candidates
         if (candidate !== null) {
-            await waitForWebSocket();
             try {
-                const json = JSON.stringify({ type: "IceCandidate", data: candidate });
-                ws.send(json);
+                await sendOnWebSocket("IceCandidate", candidate);
             } catch (err) {
                 console.log(err);
             }
         }
     };
 
-    pc.ontrack = ({ track, streams }) => {
-        console.log("ontrack");
-        var el = document.createElement(track.kind)
-        el.srcObject = streams[0]
-        el.autoplay = true
-        el.controls = true
-
-        // track.onmute = () => {
-        //     el.parentNode.removeChild(el);
-        // };
-
-        document.getElementById('video').appendChild(el)
+    pc.ontrack = async ({ track, streams }) => {
+        videoElement.srcObject = streams[0];
+        videoElement.autoplay = true;
+        videoElement.controls = true;
+        await requestFullscreenVideo();
     };
 
+    // Implements the polite peer.
     // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation#implementing_perfect_negotiation
     ws.onmessage = async (event) => {
         try {
             const message = JSON.parse(event.data);
-            console.log(message);
             switch (message.type) {
                 case "Sdp":
                     const description = message.data;
-                    const offerCollision =
-                        description.type === "offer" &&
-                        (makingOffer || pc.signalingState !== "stable");
-
-                    ignoreOffer = !polite && offerCollision;
-                    console.log('ignoreOffer: ' + ignoreOffer);
-                    if (ignoreOffer) {
-                        return;
-                    }
-
                     await pc.setRemoteDescription(new RTCSessionDescription(description));
                     if (description.type === "offer") {
                         await pc.setLocalDescription();
-                        const json = JSON.stringify({ type: "Sdp", data: pc.localDescription });
-                        console.log(pc.localDescription);
-                        ws.send(json);
+                        await sendOnWebSocket("Sdp", pc.localDescription);
                     }
-
                     break;
                 case "IceCandidate":
                     try {
                         await pc.addIceCandidate(message.data);
                     } catch (err) {
-                        if (!ignoreOffer) {
-                            throw err;
-                        }
+                        throw err;
                     }
                     break;
                 case "Bye":
@@ -137,6 +139,14 @@
             }
         } catch (err) {
             console.error(err);
+        }
+    };
+
+    videoElement.onfullscreenchange = (event) => {
+        if (document.fullscreenElement) {
+            // Entering fullscreen
+        } else {
+            // Exiting fullscreen
         }
     };
 </script>
