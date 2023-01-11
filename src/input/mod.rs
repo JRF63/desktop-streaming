@@ -73,7 +73,7 @@ async fn control_loop(data_channel: Arc<DataChannel>) {
         while !stop_signal.load(Ordering::Acquire) {
             interval.tick().await;
             let mut receiver = receiver.lock().await;
-            if let Err(e) = device.inject_pointer_input(receiver.as_mut_slice()) {
+            if let Err(e) = device.inject_pointer_input(receiver.as_slice()) {
                 log::error!("inject_pointer_input error: {e}");
             }
             receiver.clear();

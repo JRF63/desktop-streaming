@@ -263,7 +263,7 @@ impl PointerDevice {
 
     pub fn inject_pointer_input(
         &self,
-        inputs: &mut [POINTER_TYPE_INFO],
+        inputs: &[POINTER_TYPE_INFO],
     ) -> Result<(), windows::core::Error> {
         if inputs.len() == 0 {
             return Ok(());
