@@ -4,10 +4,10 @@
 
 Achievable latency is around 50 ms. The breakdown being:
 - ~16 ms inside the encoder
-- `>` 1 ms through the network
+- \> 1 ms through the network
 - leaving 33 ms for the browser's decoding
 
-# TODO
+## TODO
 - Make it work on Firefox
 - Native client for lower latency and to have support for HEVC
 - Handle reconnect after disconnection without closing the server
