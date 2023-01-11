@@ -392,9 +392,6 @@ mod tests {
         util::{MarshalSize, Unmarshal},
     };
 
-    // const H264_CSD_BYTES: &'static [u8] = include_bytes!("h264-csd.bin");
-    // const H264_INBAND_CSD_BYTES: &'static [u8] = include_bytes!("h264-inband-csd.bin");
-
     #[derive(Debug)]
     struct PacketVec(Mutex<Vec<rtp::packet::Packet>>);
 
@@ -488,7 +485,7 @@ mod tests {
             for i in 0..10 {
                 let mut data = Vec::new();
 
-                let file_name = format!("scratch/nalus/{i}.h264");
+                let file_name = format!("src/payloader/nalus/{i}.h264");
                 let mut file = std::fs::File::open(file_name).unwrap();
                 file.read_to_end(&mut data).unwrap();
 

@@ -111,8 +111,6 @@ async fn process_websocket(socket: WebSocket) {
 
     let websocket_signaler = WebSocketSignaler::new(socket);
 
-    // TODO: Debug
-
     log::info!("WebSocket upgrade");
 
     tokio::spawn(async move {
