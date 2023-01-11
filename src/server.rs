@@ -1,9 +1,12 @@
-use crate::nvidia::NvidiaEncoderBuilder;
+use crate::{input::controls_handler, nvidia::NvidiaEncoderBuilder};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
-use std::{net::SocketAddr, sync::atomic::{AtomicBool, Ordering}};
+use std::{
+    net::SocketAddr,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use tokio::sync::Mutex;
 use warp::{
     http::{Response, StatusCode},
@@ -114,7 +117,12 @@ async fn process_websocket(socket: WebSocket) {
 
     tokio::spawn(async move {
         let mut encoder_builder = WebRtcBuilder::new(websocket_signaler, Role::Answerer);
-        encoder_builder.with_encoder(Box::new(NvidiaEncoderBuilder::new("display-mirror".to_owned(), "0".to_owned())));
+        encoder_builder
+            .with_encoder(Box::new(NvidiaEncoderBuilder::new(
+                "display-mirror".to_owned(),
+                "0".to_owned(),
+            )))
+            .with_data_channel_handler(Box::new(controls_handler));
         let encoder = encoder_builder.build().await.unwrap();
         encoder.is_closed().await;
         DUPLICATOR_RUNNING.store(false, Ordering::Release);

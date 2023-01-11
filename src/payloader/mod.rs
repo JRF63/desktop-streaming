@@ -99,11 +99,12 @@ impl H264Payloader {
             stap_a_nalu.extend(pps_len);
             stap_a_nalu.extend_from_slice(&pps_nalu);
 
-            // FIXME: Marker bit
-            let p = Packet {
+            // TODO: Verify marker bit
+            let mut p = Packet {
                 header: header.clone(),
                 payload: Bytes::from(stap_a_nalu),
             };
+            p.header.marker = false;
             header.advance_sequence_number();
             writer.write_rtp(&p).await?;
         } else {
@@ -429,6 +430,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)] // Prevent rust-analyzer from complaining
     #[derive(Default)]
     struct FakeTrackLocalContext {
         id: String,

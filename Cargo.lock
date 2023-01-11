@@ -1962,6 +1962,7 @@ dependencies = [
  "futures-util",
  "log",
  "nvenc",
+ "serde",
  "serde_json",
  "tokio",
  "warp",

@@ -4,65 +4,141 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#133b5e">
     <title>WebRTC Screen Duplicator Client</title>
     <style>
-        #main-container {
-            display: flex;
-            flex-direction: column;
+        body {
+            overflow: hidden;
+            touch-action: none;
+            margin: 0;
         }
 
-        #video-container {
+        #outer {
+            touch-action: none;
             display: flex;
-            height: 50vh;
+            flex-direction: column;
+            align-items: center;
+
+            background-color: #0a1824;
+            background-image: linear-gradient(#133b5e, #0a1824);
+
+            height: 100vh;
+        }
+
+        #main-container {
+            touch-action: none;
+            display: flex;
+            flex-direction: column;
+
+            width: 100%;
+            max-width: 1000px;
+            height: 100%;
         }
 
         #controls {
             display: flex;
+            justify-content: space-between;
+
+            background-color: #02090f;
+            background-image: linear-gradient(#02090f, #000203);
+
+            width: 100%;
         }
 
         video {
-            width: 100%;
+            touch-action: none;
+
+            max-width: 100%;
+            max-height: 100%;
         }
 
         video::-webkit-media-controls-panel {
             display: none !important;
         }
+
+        .idle-video {
+            background-color: #06111a;
+            background-image: linear-gradient(#133b5e, #081520);
+        }
+
+        button {
+            border: 0;
+            padding: 0;
+            background-color: #02090f;
+            color: #d2e4f3;
+            width: 32px;
+            height: 32px;
+        }
+
+        button:disabled {
+            color: #434d55;
+        }
     </style>
 </head>
 
 <body>
-    <div id="main-container">
-        <div id="video-container">
-            <video id="main-video"></video>
-        </div>
-        <div id="controls">
-            <button id="start-button" onclick="startConnection()">Start</button>
-            <button id="fullscreen-toggle" onclick="requestFullscreenVideo()" disabled>Fullscreen</button>
+    <div id="outer">
+        <div id="main-container">
+            <video id="output" class="idle-video"></video>
+            <div id="controls">
+                <button id="start-button" onclick="startConnection()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                        class="bi bi-play" viewBox="0 0 16 16">
+                        <path
+                            d="M10.804 8 5 4.633v6.734L10.804 8zm.792-.696a.802.802 0 0 1 0 1.392l-6.363 3.692C4.713 12.69 4 12.345 4 11.692V4.308c0-.653.713-.998 1.233-.696l6.363 3.692z" />
+                    </svg>
+                </button>
+                <button id="fullscreen-toggle" onclick="requestFullscreenVideo()" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                        class="bi bi-fullscreen" viewBox="0 0 16 16">
+                        <path
+                            d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1h-4zM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zM.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5z" />
+                    </svg>
+                </button>
+            </div>
         </div>
     </div>
 </body>
 
 <script>
-    const ws = new WebSocket("ws://" + location.host + "/ws");
-    const pc = new RTCPeerConnection();
-    const videoElement = document.getElementById("main-video");
-    const videoContainer = document.getElementById("video-container");
+    const videoElement = document.getElementById("output");
+    const startButton = document.getElementById("start-button");
+    const fullscreenToggle = document.getElementById("fullscreen-toggle");
+
+    let ws = null;
+    let pc = null;
+
+    let videoWidth = null;
+    let videoHeight = null;
+    let dataChannel = null;
+
+    function log(msg) {
+        console.log(msg);
+    }
 
     async function startConnection() {
+        ws = new WebSocket("ws://" + location.host + "/ws");
+        pc = new RTCPeerConnection();
         try {
             pc.addTransceiver("video", { direction: "recvonly" });
         } catch (err) {
-            console.log(err);
+            log(err);
         }
-        document.getElementById("start-button").disabled = true;
-        document.getElementById("fullscreen-toggle").disabled = false;
+
+        log("Starting");
+
+        pc.onnegotiationneeded = negotiatioNneededHandler;
+        pc.oniceconnectionstatechange = iceConnectionStateChangeHandler;
+        pc.onicecandidate = iceCandidateHandler;
+        pc.ontrack = trackHandler;
+        ws.onmessage = messageHandler;
+
+        startButton.disabled = true;
+        fullscreenToggle.disabled = false;
     }
 
     async function webSockedConnected() {
-        while (true) {
-            if (ws.readyState === WebSocket.OPEN) {
-                return;
-            }
+        while (ws.readyState !== WebSocket.OPEN) {
             await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
@@ -77,42 +153,44 @@
         await videoElement.requestFullscreen({ navigationUI: "hide" });
     }
 
-    pc.onnegotiationneeded = async () => {
+    async function negotiatioNneededHandler(event) {
         try {
             await pc.setLocalDescription();
             await sendOnWebSocket("Sdp", pc.localDescription);
         } catch (err) {
-            console.error(err);
+            log(err);
         }
-    };
+    }
 
-    pc.oniceconnectionstatechange = async () => {
+    function iceConnectionStateChangeHandler(event) {
         if (pc.iceConnectionState === "failed") {
             pc.restartIce();
         }
-    };
+    }
 
-    pc.onicecandidate = async ({ candidate }) => {
+    async function iceCandidateHandler(event) {
+        const { candidate } = event;
         // candidate === null if there will no more ICE candidates
         if (candidate !== null) {
             try {
                 await sendOnWebSocket("IceCandidate", candidate);
             } catch (err) {
-                console.log(err);
+                log(err);
             }
         }
-    };
+    }
 
-    pc.ontrack = async ({ track, streams }) => {
+    async function trackHandler(event) {
+        const { track, streams } = event;
         videoElement.srcObject = streams[0];
         videoElement.autoplay = true;
         videoElement.controls = true;
         await requestFullscreenVideo();
-    };
+    }
 
     // Implements the polite peer.
     // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation#implementing_perfect_negotiation
-    ws.onmessage = async (event) => {
+    async function messageHandler(event) {
         try {
             const message = JSON.parse(event.data);
             switch (message.type) {
@@ -135,20 +213,106 @@
                     pc.close();
                     break;
                 default:
-                    console.log("Unknown message type: " + message.type);
+                    log("Unknown message type: " + message.type);
             }
         } catch (err) {
-            console.error(err);
+            log(err);
         }
+    }
+
+    function clamp(num, min, max) {
+        return Math.min(Math.max(num, min), max);
+    }
+
+    function pointerEventHandler(event) {
+        const epsilon = 0.01;
+        const position = videoElement.getBoundingClientRect();
+
+        let elementWidth = videoElement.offsetWidth;
+        let elementHeight = videoElement.offsetHeight;
+        let elementLeft = position.left;
+        let elementTop = position.top;
+
+        const elementAspectRatio = videoElement.offsetWidth / videoElement.offsetHeight;
+        const videoNativeAspectRatio = videoWidth / videoHeight;
+
+        // element is too wide
+        if (elementAspectRatio > videoNativeAspectRatio + epsilon) {
+            elementWidth = elementHeight * videoNativeAspectRatio;
+            elementLeft += (videoElement.offsetWidth - elementWidth) / 2;
+        }
+        // element is too tall
+        else if (elementAspectRatio + epsilon < videoNativeAspectRatio) {
+            elementHeight = elementWidth / videoNativeAspectRatio;
+            elementTop += (videoElement.offsetHeight - elementHeight) / 2;
+        }
+
+        // Convert to the original coordinates
+        const x = clamp((event.clientX - elementLeft) * videoWidth / elementWidth, 0, videoWidth);
+        const y = clamp((event.clientY - elementTop) * videoHeight / elementHeight, 0, videoHeight);
+        const width = event.width * videoWidth / elementWidth;
+        const height = event.height * videoHeight / elementHeight;
+
+        const json = {
+            type: event.type,
+            pointerId: event.pointerId,
+            isPrimary: event.isPrimary,
+
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+
+            pressure: undefined,
+            pointerType: undefined,
+            penExtra: undefined,
+            modifierKeys: undefined,
+        };
+
+        dataChannel.send(JSON.stringify(json));
+    }
+
+    function dataChannelOpenHandler(event) {
+        event.stopPropagation();
+        event.preventDefault();
+
+        const events = [
+            "pointerdown",
+            "pointermove",
+            "pointerup",
+            "pointercancel",
+            "pointerout",
+            "pointerleave"
+        ];
+        events.forEach(function (e) {
+            videoElement.addEventListener(e, pointerEventHandler);
+        });
+    }
+
+    videoElement.onloadedmetadata = (event) => {
+        videoWidth = videoElement.videoWidth;
+        videoHeight = videoElement.videoHeight;
+
+        dataChannel = pc.createDataChannel("channel");
+        dataChannel.onopen = dataChannelOpenHandler;
+
+        videoElement.classList.remove("idle-video");
     };
 
-    videoElement.onfullscreenchange = (event) => {
-        if (document.fullscreenElement) {
-            // Entering fullscreen
-        } else {
-            // Exiting fullscreen
-        }
-    };
+    function disableTouch(event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    const events = [
+        "touchstart",
+        "touchmove",
+        "touchend",
+        "touchcancel"
+    ];
+    events.forEach(function (e) {
+        videoElement.addEventListener(e, disableTouch);
+    });
 </script>
 
 </html>
