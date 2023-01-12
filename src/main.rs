@@ -4,6 +4,7 @@ mod nvidia;
 mod input;
 mod payloader;
 mod server;
+mod signaler;
 
 use std::net::SocketAddr;
 
