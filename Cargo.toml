@@ -1,39 +1,6 @@
-[package]
-name = "server-windows"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
-exclude = ["http-server", "nvenc-rs", "webrtc-helper"]
-
-[dependencies]
-async-trait = "0.1.57"
-bytes = "1.2.1"
-env_logger = "0.10.0"
-futures-util = "0.3.25"
-log = "0.4.0"
-nvenc = { path = "nvenc-rs/nvenc" }
-serde = "1.0.151"
-serde_json = "1.0.91"
-tokio = { version = "1.24.1", features = ["full"] }
-warp = { version = "0.3.3", features = ["tls"] }
-webrtc = "0.6"
-webrtc-helper = { path = "webrtc-helper" }
-
-[dependencies.windows]
-version = "0.43"
-features = [
-    "Win32_Foundation",
-    "Win32_Graphics_Direct3D",
-    "Win32_Graphics_Direct3D11",
-    "Win32_Graphics_Dxgi",
-    "Win32_Graphics_Dxgi_Common",
-    "Win32_System_Performance",
-    "Win32_UI_Controls",
-    "Win32_UI_HiDpi",
-    "Win32_UI_Input_Pointer",
-    "Win32_UI_WindowsAndMessaging"
-]
+members = ["server-windows", "webrtc-helper"]
+exclude = ["nvenc-rs"]
 
 [profile.release]
 lto = true

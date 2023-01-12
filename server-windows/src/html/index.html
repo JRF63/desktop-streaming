@@ -185,7 +185,6 @@
         videoElement.srcObject = streams[0];
         videoElement.autoplay = true;
         videoElement.controls = true;
-        await requestFullscreenVideo();
     }
 
     // Implements the polite peer.
@@ -289,7 +288,7 @@
         });
     }
 
-    videoElement.onloadedmetadata = (event) => {
+    videoElement.onloadedmetadata = async (event) => {
         videoWidth = videoElement.videoWidth;
         videoHeight = videoElement.videoHeight;
 
@@ -297,6 +296,7 @@
         dataChannel.onopen = dataChannelOpenHandler;
 
         videoElement.classList.remove("idle-video");
+        await requestFullscreenVideo();
     };
 
     function disableTouch(event) {

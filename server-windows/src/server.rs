@@ -29,7 +29,7 @@ pub async fn http_server(addr: impl Into<SocketAddr>) {
             use std::fs::File;
             use std::io::prelude::*;
 
-            let mut file = File::open("src/html/index.html").unwrap();
+            let mut file = File::open("server-windows/src/html/index.html").unwrap();
             let mut contents = String::new();
             file.read_to_string(&mut contents).unwrap();
             Response::new(contents)

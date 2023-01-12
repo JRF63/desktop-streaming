@@ -88,10 +88,12 @@ impl NvidiaEncoderInput {
                             Ok(RtcpEvent::Pli(_pli)) => {
                                 // FIXME: Properly handle SSRC
                                 self.input.force_idr_on_next();
+                                log::info!("PLI received");
                             }
                             Ok(RtcpEvent::Fir(_fir)) => {
                                 // FIXME: Properly handle SSRC and seq nums
                                 self.input.force_idr_on_next();
+                                log::info!("FIR received");
                             }
                             _ => (), // Ignore errors
                         }
