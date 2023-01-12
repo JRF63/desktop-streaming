@@ -74,5 +74,6 @@ async fn process_websocket(socket: WebSocket) {
         let encoder = encoder_builder.build().await.unwrap();
         encoder.is_closed().await;
         DUPLICATOR_RUNNING.store(false, Ordering::Release);
+        log::info!("Exited");
     });
 }

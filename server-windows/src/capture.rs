@@ -12,7 +12,7 @@ use windows::{
         UI::HiDpi::{
             GetProcessDpiAwareness, SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_AWARE,
             PROCESS_SYSTEM_DPI_AWARE,
-        },
+        }, Foundation::E_ACCESSDENIED,
     },
 };
 
@@ -28,6 +28,12 @@ pub struct ScreenDuplicator {
     supported_formats: Box<[DXGI_FORMAT]>,
     /// Cached result for the usage of IDXGIOutput5.
     is_dpi_aware: bool,
+}
+
+impl Drop for ScreenDuplicator {
+    fn drop(&mut self) {
+        let _ = self.release_frame();
+    }
 }
 
 unsafe impl Send for ScreenDuplicator {}
@@ -171,7 +177,12 @@ impl ScreenDuplicator {
     /// Returns the DPI awareness.
     fn try_set_dpi_aware() -> Result<bool, windows::core::Error> {
         unsafe {
-            SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE)?;
+            if let Err(e) = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE) {
+                // `E_ACCESSDENIED` means the DPI awareness has already been set
+                if e.code() != E_ACCESSDENIED {
+                    return Err(e);
+                }
+            }
             let awareness = GetProcessDpiAwareness(None)?;
             if awareness == PROCESS_SYSTEM_DPI_AWARE || awareness == PROCESS_PER_MONITOR_DPI_AWARE {
                 Ok(true)

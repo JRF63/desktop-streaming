@@ -1,6 +1,6 @@
 use crate::{capture::ScreenDuplicator, payloader::H264Payloader};
 use std::sync::Arc;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use webrtc::{
     ice_transport::ice_connection_state::RTCIceConnectionState,
     rtcp::{
@@ -146,7 +146,7 @@ impl NvidiaEncoderOutput {
         }
     }
 
-    fn write_packets(&mut self, handle: &tokio::runtime::Handle) {
+    fn write_packets(&mut self, handle: &tokio::runtime::Handle) -> Result<(), nvenc::NvEncError> {
         let encode_result = self.output.wait_for_output(|lock| {
             let slice = unsafe {
                 std::slice::from_raw_parts(
@@ -175,10 +175,51 @@ impl NvidiaEncoderOutput {
             }
         });
 
-        if let Err(e) = encode_result {
-            log::error!("Error while waiting for output: {e}")
+        encode_result
+    }
+}
+
+async fn rtcp_handler(
+    transceiver: Arc<RTCRtpTransceiver>,
+    mut ice_connection_state: IceConnectionState,
+    rtcp_tx: UnboundedSender<RtcpEvent>,
+) {
+    if let Some(sender) = transceiver.sender().await {
+        let mut buf = vec![0u8; RTCP_MAX_MTU];
+
+        loop {
+            tokio::select! {
+                _ = ice_connection_state.changed() => {
+                    if *ice_connection_state.borrow() != RTCIceConnectionState::Connected {
+                        break;
+                    }
+                }
+                read_result = sender.read(&mut buf) => {
+                    if let Ok((n, _)) = read_result {
+                        let mut raw_data = &buf[..n];
+                        if let Ok(packets) = rtcp::packet::unmarshal(&mut raw_data) {
+                            for packet in packets {
+                                let packet = packet.as_any();
+                                if let Some(pli) = packet.downcast_ref::<PictureLossIndication>() {
+                                    if let Err(e) = rtcp_tx.send(RtcpEvent::Pli(pli.clone())) {
+                                        log::warn!("Error while sending RtcpEvent: {e}");
+                                    }
+                                } else if let Some(fir) = packet.downcast_ref::<FullIntraRequest>() {
+                                    if let Err(e) = rtcp_tx.send(RtcpEvent::Fir(fir.clone())) {
+                                        log::warn!("Error while sending RtcpEvent: {e}");
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
         }
     }
+    let _ = transceiver.stop().await;
+    log::info!("RTCP handler exited");
 }
 
 pub async fn start_encoder(
@@ -202,28 +243,7 @@ pub async fn start_encoder(
 
     let (rtcp_tx, rtcp_rx) = unbounded_channel();
 
-    if let Some(sender) = transceiver.sender().await {
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; RTCP_MAX_MTU];
-            while let Ok((n, _)) = sender.read(&mut buf).await {
-                let mut raw_data = &buf[..n];
-                if let Ok(packets) = rtcp::packet::unmarshal(&mut raw_data) {
-                    for packet in packets {
-                        let packet = packet.as_any();
-                        if let Some(pli) = packet.downcast_ref::<PictureLossIndication>() {
-                            if let Err(e) = rtcp_tx.send(RtcpEvent::Pli(pli.clone())) {
-                                log::warn!("Error while sending RtcpEvent: {e}");
-                            }
-                        } else if let Some(fir) = packet.downcast_ref::<FullIntraRequest>() {
-                            if let Err(e) = rtcp_tx.send(RtcpEvent::Fir(fir.clone())) {
-                                log::warn!("Error while sending RtcpEvent: {e}");
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
+    tokio::spawn(rtcp_handler(transceiver, ice_connection_state.clone(), rtcp_tx));
 
     let mut input = NvidiaEncoderInput::new(screen_duplicator, input, bandwidth_estimate, rtcp_rx);
     let mut output = NvidiaEncoderOutput::new(output, rtp_track, payload_type, ssrc);
@@ -231,20 +251,22 @@ pub async fn start_encoder(
     let ice_1 = ice_connection_state;
     let ice_2 = ice_1.clone();
 
-    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
         while *ice_1.borrow() == RTCIceConnectionState::Connected {
-            handle.block_on(async {
-                input.encode();
-            });
+            input.encode();
         }
+        log::info!("Input thread exited");
     });
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
         while *ice_2.borrow() == RTCIceConnectionState::Connected {
-            output.write_packets(&handle);
+            if let Err(e) = output.write_packets(&handle) {
+                log::error!("Error while waiting for output: {e}");
+                break;
+            }
         }
+        log::info!("Output thread exited");
     });
 }
 
