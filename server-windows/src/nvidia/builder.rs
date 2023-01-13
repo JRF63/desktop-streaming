@@ -132,25 +132,20 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             panic!("Error configuring encoder: {e}");
         }
 
-        let (width, height, texture_format, refresh_ratio) = {
+        let (width, height, texture_format) = {
             let display_desc = screen_duplicator.desc();
             let mode_desc = &display_desc.ModeDesc;
-            let refresh_ratio = (
-                mode_desc.RefreshRate.Numerator,
-                mode_desc.RefreshRate.Denominator,
-            );
             (
                 mode_desc.Width,
                 mode_desc.Height,
                 mode_desc.Format,
-                refresh_ratio,
             )
         };
 
         let (input, output) =
             match self
                 .inner_builder
-                .build(width, height, texture_format, None, refresh_ratio)
+                .build(width, height, texture_format, None, None)
             {
                 Ok((input, output)) => (input, output),
                 Err(e) => {
