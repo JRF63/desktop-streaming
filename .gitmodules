@@ -4,3 +4,6 @@
 [submodule "webrtc-helper"]
 	path = webrtc-helper
 	url = https://github.com/JRF63/webrtc-helper.git
+[submodule "client-android"]
+	path = client-android
+	url = https://github.com/JRF63/desktop-streaming-client-android.git
