@@ -6,7 +6,7 @@ use webrtc::{
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 use webrtc_helper::{
-    codecs::{Codec, CodecType},
+    codecs::{Codec, CodecType, H264Profile},
     encoder::EncoderBuilder,
     peer::IceConnectionState,
     util::data_rate::TwccBandwidthEstimate,
@@ -135,11 +135,7 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
         let (width, height, texture_format) = {
             let display_desc = screen_duplicator.desc();
             let mode_desc = &display_desc.ModeDesc;
-            (
-                mode_desc.Width,
-                mode_desc.Height,
-                mode_desc.Format,
-            )
+            (mode_desc.Width, mode_desc.Height, mode_desc.Format)
         };
 
         let (input, output) =
@@ -229,9 +225,10 @@ fn list_supported_codecs(
         match codec {
             nvenc::Codec::H264 => {
                 let sorter = HashMap::from([
-                    (nvenc::CodecProfile::H264High, 0),
-                    (nvenc::CodecProfile::H264Main, 1),
-                    (nvenc::CodecProfile::H264Baseline, 2),
+                    (nvenc::CodecProfile::H264ConstrainedHigh, 0),
+                    (nvenc::CodecProfile::H264High, 1),
+                    (nvenc::CodecProfile::H264Main, 2),
+                    (nvenc::CodecProfile::H264Baseline, 3),
                 ]);
 
                 let mut supported_codec_profiles = inner_builder.supported_codec_profiles(codec)?;
@@ -242,31 +239,28 @@ fn list_supported_codecs(
                     (None, None) => std::cmp::Ordering::Equal,
                 });
 
-                for profile in supported_codec_profiles {
+                let convert_h264_profile = |profile: nvenc::CodecProfile| -> Option<H264Profile> {
                     match profile {
-                        nvenc::CodecProfile::H264Baseline => {
-                            codecs.push(Codec::h264_custom(66, 0, None));
-                            // TODO: Constrained Baseline profile
-                            // codecs.push(Codec::h264_custom(66, 0xe0, None));
+                        nvenc::CodecProfile::H264Baseline => Some(H264Profile::Baseline),
+                        nvenc::CodecProfile::H264Main => Some(H264Profile::Main),
+                        nvenc::CodecProfile::H264High => Some(H264Profile::High),
+                        nvenc::CodecProfile::H264High444 => Some(H264Profile::High444),
+                        nvenc::CodecProfile::H264Stereo => Some(H264Profile::StereoHigh),
+                        nvenc::CodecProfile::H264ProgressiveHigh => Some(H264Profile::ProgressiveHigh),
+                        nvenc::CodecProfile::H264ConstrainedHigh => Some(H264Profile::ConstrainedHigh),
+                        nvenc::CodecProfile::HevcMain |
+                        nvenc::CodecProfile::HevcMain10 |
+                        nvenc::CodecProfile::HevcFrext => {
+                            panic!("Unexpected HEVC profile returned while using H264 codec");
                         }
-                        nvenc::CodecProfile::H264Main => {
-                            codecs.push(Codec::h264_custom(77, 0, None));
-                        }
-                        nvenc::CodecProfile::H264High => {
-                            codecs.push(Codec::h264_custom(100, 0, None));
-                        }
-                        // -- Unimplemented --
-                        // nvenc::CodecProfile::H264High444 => todo!(),
-                        // nvenc::CodecProfile::H264Stereo => todo!(),
-                        // nvenc::CodecProfile::H264ProgressiveHigh => todo!(),
-                        // nvenc::CodecProfile::H264ConstrainedHigh => todo!(),
-                        nvenc::CodecProfile::HevcMain
-                        | nvenc::CodecProfile::HevcMain10
-                        | nvenc::CodecProfile::HevcFrext => {
-                            panic!("Unexpected HEVC profile returned while using H264 codec")
-                        }
-                        nvenc::CodecProfile::Autoselect => continue, // Always present
-                        _ => continue,                               // Unknown profiles
+                        nvenc::CodecProfile::Autoselect => None, // Always present
+                        _ => None, // Unknown profile
+                    }
+                };
+
+                for profile in supported_codec_profiles {
+                    if let Some(p) = convert_h264_profile(profile) {
+                        codecs.push(Codec::h264_custom(p, None, None));
                     }
                 }
             }
