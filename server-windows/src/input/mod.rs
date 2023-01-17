@@ -1,18 +1,12 @@
 mod pointer;
 
 use self::pointer::{PointerDevice, PointerEvent};
-use std::{
-    future::Future,
-    pin::Pin,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tokio::{sync::Mutex, time::interval};
+use std::{future::Future, pin::Pin, sync::Arc};
 use webrtc::{data::data_channel::DataChannel, data_channel::RTCDataChannel};
-use windows::Win32::UI::Controls::POINTER_TYPE_INFO;
+use windows::{
+    core::HRESULT,
+    Win32::{Foundation::ERROR_NOT_READY, UI::Controls::POINTER_TYPE_INFO},
+};
 
 const MESSAGE_SIZE: usize = 1500;
 
@@ -42,41 +36,38 @@ pub fn controls_handler(
 }
 
 async fn control_loop(data_channel: Arc<DataChannel>) {
-    let sender = Arc::new(Mutex::new(Vec::<POINTER_TYPE_INFO>::new()));
-    let receiver = sender.clone();
-    let stop_signal = Arc::new(AtomicBool::new(false));
-    let stopper = stop_signal.clone();
-
-    tokio::spawn(async move {
-        let mut buffer = vec![0u8; MESSAGE_SIZE];
-
-        while let Ok((n, is_string)) = data_channel.read_data_channel(&mut buffer).await {
-            if is_string {
-                if let Ok(s) = std::str::from_utf8(&buffer[..n]) {
-                    match serde_json::from_str::<PointerEvent>(s) {
-                        Ok(p) => {
-                            let mut sender = sender.lock().await;
-                            sender.push(p.into());
-                        }
-                        Err(e) => log::error!("serde_json::from_str error: {e}"),
-                    }
-                }
-            }
-        }
-        stopper.store(true, Ordering::Release);
-    });
-
     tokio::spawn(async move {
         let device = PointerDevice::new().expect("Failed to create `PointerDevice`");
-        let mut interval = interval(Duration::from_micros(100));
+        let mut buffer = vec![0u8; MESSAGE_SIZE];
 
-        while !stop_signal.load(Ordering::Acquire) {
-            interval.tick().await;
-            let mut receiver = receiver.lock().await;
-            if let Err(e) = device.inject_pointer_input(receiver.as_slice()) {
-                log::error!("inject_pointer_input error: {e}");
+        let not_ready = HRESULT(ERROR_NOT_READY.0 as _);
+
+        while let Ok((n, is_string)) = data_channel.read_data_channel(&mut buffer).await {
+            if !is_string {
+                continue;
             }
-            receiver.clear();
+
+            if let Ok(s) = std::str::from_utf8(&buffer[..n]) {
+                match serde_json::from_str::<PointerEvent>(s) {
+                    Ok(p) => {
+                        let p: POINTER_TYPE_INFO = p.into();
+
+                        loop {
+                            match device.inject_pointer_input(std::array::from_ref(&p)) {
+                                Ok(_) => break,
+                                Err(e) => {
+                                    if e.code() == not_ready {
+                                        continue;
+                                    }
+                                    log::error!("inject_pointer_input error: {e}");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => log::error!("serde_json::from_str error: {e}"),
+                }
+            }
         }
     });
 }
