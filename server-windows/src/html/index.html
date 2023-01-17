@@ -116,11 +116,43 @@
         console.log(msg);
     }
 
+    function getH264Profile(codec) {
+        if (codec.mimeType !== "video/H264" || codec.sdpFmtpLine === undefined) {
+            return undefined;
+        }
+        const n = codec.sdpFmtpLine.length;
+        return codec.sdpFmtpLine.substring(n - 6, n - 4);
+    }
+
     async function startConnection() {
         ws = new WebSocket("ws://" + location.host + "/ws");
         pc = new RTCPeerConnection();
         try {
-            pc.addTransceiver("video", { direction: "recvonly" });
+            const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
+            if (transceiver.setCodecPreferences !== undefined) {
+                const sorter = new Map();
+                sorter.set("64", 0);
+                sorter.set("4D", 1);
+                sorter.set("42", 2);
+
+                const codecs = RTCRtpReceiver.getCapabilities("video").codecs;
+                codecs.sort((a, b) => {
+                    let rankA = sorter.get(getH264Profile(a));
+                    if (rankA === undefined) {
+                        rankA = 10;
+                    }
+                    let rankB = sorter.get(getH264Profile(b));
+                    if (rankB === undefined) {
+                        rankB = 10;
+                    }
+                    return rankA - rankB;
+                });
+                for (const codec of codecs) {
+                    console.log(codec);
+                }
+
+                transceiver.setCodecPreferences(codecs);
+            }
         } catch (err) {
             log(err);
         }
