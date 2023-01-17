@@ -9,7 +9,7 @@ use webrtc_helper::{
     codecs::{Codec, CodecType, H264Profile},
     encoder::EncoderBuilder,
     peer::IceConnectionState,
-    util::data_rate::TwccBandwidthEstimate,
+    interceptor::twcc::TwccBandwidthEstimate,
 };
 use windows::Win32::Graphics::{
     Direct3D11::ID3D11Device,
