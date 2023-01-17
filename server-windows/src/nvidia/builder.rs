@@ -240,9 +240,10 @@ fn list_supported_codecs(
                 });
 
                 let convert_h264_profile = |profile: nvenc::CodecProfile| -> Option<H264Profile> {
+                    // Force to use high while figuring out the best way to sort the codecs in SDP
                     match profile {
-                        nvenc::CodecProfile::H264Baseline => Some(H264Profile::Baseline),
-                        nvenc::CodecProfile::H264Main => Some(H264Profile::Main),
+                        nvenc::CodecProfile::H264Baseline => None, // Some(H264Profile::Baseline),
+                        nvenc::CodecProfile::H264Main => None, // Some(H264Profile::Main),
                         nvenc::CodecProfile::H264High => Some(H264Profile::High),
                         nvenc::CodecProfile::H264High444 => Some(H264Profile::High444),
                         nvenc::CodecProfile::H264Stereo => Some(H264Profile::StereoHigh),
