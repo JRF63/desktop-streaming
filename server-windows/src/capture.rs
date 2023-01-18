@@ -2,6 +2,7 @@ use std::{mem::MaybeUninit, time::Duration};
 use windows::{
     core::Interface,
     Win32::{
+        Foundation::E_ACCESSDENIED,
         Graphics::{
             Direct3D11::{ID3D11Device, ID3D11Texture2D},
             Dxgi::{
@@ -12,7 +13,7 @@ use windows::{
         UI::HiDpi::{
             GetProcessDpiAwareness, SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_AWARE,
             PROCESS_SYSTEM_DPI_AWARE,
-        }, Foundation::E_ACCESSDENIED,
+        },
     },
 };
 
@@ -99,8 +100,11 @@ impl ScreenDuplicator {
 
         // SAFETY: Windows API call
         let result = unsafe {
-            self.output_dupl
-                .AcquireNextFrame(timeout_millis, frame_info.as_mut_ptr(), &mut resource)
+            self.output_dupl.AcquireNextFrame(
+                timeout_millis,
+                frame_info.as_mut_ptr(),
+                &mut resource,
+            )
         };
 
         match result {

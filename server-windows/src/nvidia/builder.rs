@@ -8,8 +8,8 @@ use webrtc::{
 use webrtc_helper::{
     codecs::{Codec, CodecType, H264Profile},
     encoder::EncoderBuilder,
-    peer::IceConnectionState,
     interceptor::twcc::TwccBandwidthEstimate,
+    peer::IceConnectionState,
 };
 use windows::Win32::Graphics::{
     Direct3D11::ID3D11Device,
@@ -150,20 +150,17 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             };
 
         let handle = tokio::runtime::Handle::current();
-        handle.spawn(async move {
-            start_encoder(
-                screen_duplicator,
-                input,
-                output,
-                rtp_track,
-                transceiver,
-                ice_connection_state,
-                bandwidth_estimate,
-                payload_type,
-                ssrc,
-            )
-            .await;
-        });
+        handle.spawn(start_encoder(
+            screen_duplicator,
+            input,
+            output,
+            rtp_track,
+            transceiver,
+            ice_connection_state,
+            bandwidth_estimate,
+            payload_type,
+            ssrc,
+        ));
     }
 }
 
@@ -246,15 +243,19 @@ fn list_supported_codecs(
                         nvenc::CodecProfile::H264High => Some(H264Profile::High),
                         nvenc::CodecProfile::H264High444 => Some(H264Profile::High444),
                         nvenc::CodecProfile::H264Stereo => Some(H264Profile::StereoHigh),
-                        nvenc::CodecProfile::H264ProgressiveHigh => Some(H264Profile::ProgressiveHigh),
-                        nvenc::CodecProfile::H264ConstrainedHigh => Some(H264Profile::ConstrainedHigh),
-                        nvenc::CodecProfile::HevcMain |
-                        nvenc::CodecProfile::HevcMain10 |
-                        nvenc::CodecProfile::HevcFrext => {
+                        nvenc::CodecProfile::H264ProgressiveHigh => {
+                            Some(H264Profile::ProgressiveHigh)
+                        }
+                        nvenc::CodecProfile::H264ConstrainedHigh => {
+                            Some(H264Profile::ConstrainedHigh)
+                        }
+                        nvenc::CodecProfile::HevcMain
+                        | nvenc::CodecProfile::HevcMain10
+                        | nvenc::CodecProfile::HevcFrext => {
                             panic!("Unexpected HEVC profile returned while using H264 codec");
                         }
                         nvenc::CodecProfile::Autoselect => None, // Always present
-                        _ => None, // Unknown profile
+                        _ => None,                               // Unknown profile
                     }
                 };
 

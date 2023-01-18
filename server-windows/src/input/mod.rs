@@ -36,38 +36,36 @@ pub fn controls_handler(
 }
 
 async fn control_loop(data_channel: Arc<DataChannel>) {
-    tokio::spawn(async move {
-        let device = PointerDevice::new().expect("Failed to create `PointerDevice`");
-        let mut buffer = vec![0u8; MESSAGE_SIZE];
+    let device = PointerDevice::new().expect("Failed to create `PointerDevice`");
+    let mut buffer = vec![0u8; MESSAGE_SIZE];
 
-        let not_ready = HRESULT(ERROR_NOT_READY.0 as _);
+    let not_ready = HRESULT(ERROR_NOT_READY.0 as _);
 
-        while let Ok((n, is_string)) = data_channel.read_data_channel(&mut buffer).await {
-            if !is_string {
-                continue;
-            }
+    while let Ok((n, is_string)) = data_channel.read_data_channel(&mut buffer).await {
+        if !is_string {
+            continue;
+        }
 
-            if let Ok(s) = std::str::from_utf8(&buffer[..n]) {
-                match serde_json::from_str::<PointerEvent>(s) {
-                    Ok(p) => {
-                        let p: POINTER_TYPE_INFO = p.into();
+        if let Ok(s) = std::str::from_utf8(&buffer[..n]) {
+            match serde_json::from_str::<PointerEvent>(s) {
+                Ok(p) => {
+                    let p: POINTER_TYPE_INFO = p.into();
 
-                        loop {
-                            match device.inject_pointer_input(std::array::from_ref(&p)) {
-                                Ok(_) => break,
-                                Err(e) => {
-                                    if e.code() == not_ready {
-                                        continue;
-                                    }
-                                    log::error!("inject_pointer_input error: {e}");
-                                    break;
+                    loop {
+                        match device.inject_pointer_input(std::array::from_ref(&p)) {
+                            Ok(_) => break,
+                            Err(e) => {
+                                if e.code() == not_ready {
+                                    continue;
                                 }
+                                log::error!("inject_pointer_input error: {e}");
+                                break;
                             }
                         }
                     }
-                    Err(e) => log::error!("serde_json::from_str error: {e}"),
                 }
+                Err(e) => log::error!("serde_json::from_str error: {e}"),
             }
         }
-    });
+    }
 }

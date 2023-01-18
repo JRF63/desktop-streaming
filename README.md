@@ -28,12 +28,12 @@ Touch/pen input is simulated through the [InjectSyntheticPointerInput](https://l
 WebRTC signaling is handled through WebSocket's. The plan being to support both browser and native client using the same server implementation.
 
 ## TODO
-- Make it work on Firefox
-- Native client for lower latency and to have support for HEVC
-- Handle reconnect after disconnection without closing the server
-- Encrypt WebSocket comm. with TLS using a self-signed cert
-- Some type of authentication (JWT maybe?)
-- AMD, Intel encoders
-- Linux server using PipeWire
-- Gamepad support
-- Audio streaming via Opus
+- [ ] Make it work on Firefox
+- [ ] Native client for lower latency and to have support for HEVC
+- [x] Handle reconnect after disconnection without closing the server
+- [ ] Encrypt WebSocket comm. with TLS using a self-signed cert
+- [ ] Some type of authentication (JWT maybe?)
+- [ ] AMD, Intel encoders
+- [ ] Linux server using PipeWire
+- [ ] Gamepad support
+- [ ] Audio streaming via Opus

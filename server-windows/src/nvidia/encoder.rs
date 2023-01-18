@@ -26,8 +26,8 @@ const MAX_BITRATE_MBPS: u32 = 100_000_000;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum RtcpEvent {
-    Pli(PictureLossIndication),
-    Fir(FullIntraRequest),
+    Pli,
+    Fir,
 }
 
 struct NvidiaEncoderInput {
@@ -64,18 +64,17 @@ impl NvidiaEncoderInput {
         }
     }
 
-    fn encode(&mut self) {
+    fn encode(&mut self) -> Result<(), nvenc::NvEncError> {
         match self
             .screen_duplicator
             .acquire_frame(self.acquire_timeout_millis)
         {
             Ok((acquired_image, info)) => {
                 let timestamp = u64::from_ne_bytes(info.LastPresentTime.to_ne_bytes());
-                self.input
-                    .encode_frame(acquired_image, timestamp, || {
-                        self.screen_duplicator.release_frame().unwrap()
-                    })
-                    .unwrap();
+                self.input.encode_frame(acquired_image, timestamp, || {
+                    self.screen_duplicator.release_frame().unwrap()
+                })?;
+                Ok(())
             }
             Err(e) => {
                 match e.code() {
@@ -85,22 +84,25 @@ impl NvidiaEncoderInput {
                         }
 
                         match self.rtcp_rx.try_recv() {
-                            Ok(RtcpEvent::Pli(_pli)) => {
+                            Ok(RtcpEvent::Pli) => {
                                 // FIXME: Properly handle SSRC
                                 self.input.force_idr_on_next();
                                 log::info!("PLI received");
                             }
-                            Ok(RtcpEvent::Fir(_fir)) => {
+                            Ok(RtcpEvent::Fir) => {
                                 // FIXME: Properly handle SSRC and seq nums
                                 self.input.force_idr_on_next();
                                 log::info!("FIR received");
                             }
                             _ => (), // Ignore errors
                         }
+
+                        Ok(())
                     }
                     DXGI_ERROR_ACCESS_LOST => {
                         // Reset duplicator then move on to next frame acquisition
                         self.screen_duplicator.reset_output_duplicator().unwrap();
+                        Ok(())
                     }
                     _ => panic!("{}", e),
                 }
@@ -183,6 +185,7 @@ async fn rtcp_handler(
     transceiver: Arc<RTCRtpTransceiver>,
     mut ice_connection_state: IceConnectionState,
     rtcp_tx: UnboundedSender<RtcpEvent>,
+    ssrc: u32,
 ) {
     if let Some(sender) = transceiver.sender().await {
         let mut buf = vec![0u8; RTCP_MAX_MTU];
@@ -201,12 +204,16 @@ async fn rtcp_handler(
                             for packet in packets {
                                 let packet = packet.as_any();
                                 if let Some(pli) = packet.downcast_ref::<PictureLossIndication>() {
-                                    if let Err(e) = rtcp_tx.send(RtcpEvent::Pli(pli.clone())) {
-                                        log::warn!("Error while sending RtcpEvent: {e}");
+                                    if pli.media_ssrc == ssrc {
+                                        if let Err(e) = rtcp_tx.send(RtcpEvent::Pli) {
+                                            log::warn!("Error while sending RtcpEvent: {e}");
+                                        }
                                     }
                                 } else if let Some(fir) = packet.downcast_ref::<FullIntraRequest>() {
-                                    if let Err(e) = rtcp_tx.send(RtcpEvent::Fir(fir.clone())) {
-                                        log::warn!("Error while sending RtcpEvent: {e}");
+                                    if fir.media_ssrc == ssrc {
+                                        if let Err(e) = rtcp_tx.send(RtcpEvent::Fir) {
+                                            log::warn!("Error while sending RtcpEvent: {e}");
+                                        }
                                     }
                                 }
                             }
@@ -233,13 +240,13 @@ pub async fn start_encoder(
     payload_type: u8,
     ssrc: u32,
 ) {
-    log::info!("start_encoder");
     while *ice_connection_state.borrow() != RTCIceConnectionState::Connected {
         if let Err(_) = ice_connection_state.changed().await {
             log::error!("Peer exited before ICE became connected");
             return;
         }
     }
+    // tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     let (rtcp_tx, rtcp_rx) = unbounded_channel();
 
@@ -247,6 +254,7 @@ pub async fn start_encoder(
         transceiver,
         ice_connection_state.clone(),
         rtcp_tx,
+        ssrc,
     ));
 
     let mut input = NvidiaEncoderInput::new(screen_duplicator, input, bandwidth_estimate, rtcp_rx);
@@ -257,7 +265,9 @@ pub async fn start_encoder(
 
     std::thread::spawn(move || {
         while *ice_1.borrow() == RTCIceConnectionState::Connected {
-            input.encode();
+            if let Err(e) = input.encode() {
+                log::error!("Error encoding: {e}");
+            }
         }
         log::info!("Input thread exited");
     });
