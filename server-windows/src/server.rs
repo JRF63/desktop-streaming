@@ -43,11 +43,11 @@ pub async fn http_server(addr: impl Into<SocketAddr>) {
         response
     });
 
-    let websocket = warp::path("ws")
+    let websocket = warp::path::end()
         .and(warp::ws())
         .map(|ws: warp::ws::Ws| ws.on_upgrade(process_websocket));
 
-    let routes = index.or(websocket).or(not_found);
+    let routes = websocket.or(index).or(not_found);
 
     warp::serve(routes).run(addr).await;
 }

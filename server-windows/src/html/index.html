@@ -125,7 +125,7 @@
     }
 
     async function startConnection() {
-        ws = new WebSocket("ws://" + location.host + "/ws");
+        ws = new WebSocket("ws://" + location.host);
         pc = new RTCPeerConnection();
         try {
             const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
