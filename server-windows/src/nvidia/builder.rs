@@ -6,7 +6,7 @@ use webrtc::{
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 use webrtc_helper::{
-    codecs::{Codec, CodecType, H264Profile},
+    codecs::{Codec, H264Codec, CodecType, H264Profile},
     encoder::EncoderBuilder,
     interceptor::twcc::TwccBandwidthEstimate,
     peer::IceConnectionState,
@@ -217,7 +217,7 @@ impl NvidiaEncoderBuilder {
 fn list_supported_codecs(
     inner_builder: &mut nvenc::EncoderBuilder<nvenc::DirectX11Device>,
 ) -> nvenc::Result<Vec<Codec>> {
-    let mut codecs = Vec::new();
+    let mut codecs: Vec<Codec> = Vec::new();
     for codec in inner_builder.supported_codecs()? {
         match codec {
             nvenc::Codec::H264 => {
@@ -260,8 +260,8 @@ fn list_supported_codecs(
                 };
 
                 for profile in supported_codec_profiles {
-                    if let Some(p) = convert_h264_profile(profile) {
-                        codecs.push(Codec::h264_custom(p, None, None));
+                    if let Some(profile) = convert_h264_profile(profile) {
+                        codecs.push(H264Codec::new(profile).into());
                     }
                 }
             }
