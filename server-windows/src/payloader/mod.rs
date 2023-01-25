@@ -176,7 +176,7 @@ impl H264Payloader {
             return Ok(());
         }
 
-        let buf_size = div_ceil(nalu.len(), mtu);
+        let buf_size = mtu * div_ceil(nalu.len(), max_fragment_size as usize);
 
         // This is brought outside the loop to decrease allocation/deallocation.
         let mut out = BytesMut::with_capacity(buf_size);
@@ -198,12 +198,14 @@ impl H264Payloader {
             //+---------------+
 
             let mut b1 = nalu_type;
+            let mut marker = false;
             if nalu_data_remaining == nalu_data_length {
                 // Set start bit
                 b1 |= 1 << 7;
             } else if nalu_data_remaining - current_fragment_size == 0 {
                 // Set end bit
                 b1 |= 1 << 6;
+                marker = true;
             }
             out.put_u8(b1);
 
@@ -219,7 +221,7 @@ impl H264Payloader {
                 header: header.clone(),
                 payload: out.split().freeze(),
             };
-            p.header.marker = !(nalu_data_remaining > 0);
+            p.header.marker = marker;
             header.advance_sequence_number();
             writer.write_rtp(&p).await?;
         }
