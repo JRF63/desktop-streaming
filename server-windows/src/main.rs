@@ -2,7 +2,6 @@ mod capture;
 mod device;
 mod input;
 mod nvidia;
-mod payloader;
 mod server;
 mod signaler;
 

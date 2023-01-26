@@ -1,4 +1,4 @@
-use crate::{capture::ScreenDuplicator, payloader::H264Payloader};
+use crate::capture::ScreenDuplicator;
 use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use webrtc::{
@@ -13,7 +13,9 @@ use webrtc::{
     rtp_transceiver::RTCRtpTransceiver,
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
-use webrtc_helper::{interceptor::twcc::TwccBandwidthEstimate, peer::IceConnectionState};
+use webrtc_helper::{
+    codecs::H264SampleSender, interceptor::twcc::TwccBandwidthEstimate, peer::IceConnectionState,
+};
 use windows::Win32::{
     Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT},
     System::Performance::QueryPerformanceFrequency,
@@ -114,7 +116,7 @@ impl NvidiaEncoderInput {
 struct NvidiaEncoderOutput {
     output: nvenc::EncoderOutput,
     rtp_track: Arc<TrackLocalStaticRTP>,
-    payloader: H264Payloader,
+    payloader: H264SampleSender,
     timer_frequency: u64,
     header: Header,
 }
@@ -126,7 +128,7 @@ impl NvidiaEncoderOutput {
         payload_type: u8,
         ssrc: u32,
     ) -> NvidiaEncoderOutput {
-        let payloader = H264Payloader::default();
+        let payloader = H264SampleSender::default();
         let timer_frequency = timer_frequency();
         let header = Header {
             version: 2,
@@ -163,7 +165,7 @@ impl NvidiaEncoderOutput {
             // Send the encoded frames
             let write_result = handle.block_on(async {
                 self.payloader
-                    .write_to_rtp(
+                    .send_payload(
                         RTP_MTU - 12,
                         &mut self.header,
                         &bytes::Bytes::copy_from_slice(slice),
