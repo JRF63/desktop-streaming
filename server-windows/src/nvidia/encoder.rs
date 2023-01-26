@@ -168,7 +168,7 @@ impl NvidiaEncoderOutput {
                     .send_payload(
                         RTP_MTU - 12,
                         &mut self.header,
-                        &bytes::Bytes::copy_from_slice(slice),
+                        slice,
                         &*self.rtp_track,
                     )
                     .await

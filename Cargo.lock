@@ -1882,7 +1882,6 @@ name = "server-windows"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bytes",
  "env_logger",
  "futures-util",
  "log",

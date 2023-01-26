@@ -6,7 +6,6 @@ authors = ["Joseph Rafael Ferrer <rafael2x0@gmail.com>"]
 
 [dependencies]
 async-trait = "0.1.57"
-bytes = "1.2.1"
 env_logger = "0.10.0"
 futures-util = "0.3.25"
 log = "0.4.0"
