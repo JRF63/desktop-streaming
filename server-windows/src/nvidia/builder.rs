@@ -6,7 +6,7 @@ use webrtc::{
     track::track_local::track_local_static_rtp::TrackLocalStaticRTP,
 };
 use webrtc_helper::{
-    codecs::{Codec, H264Codec, CodecType, H264Profile},
+    codecs::{Codec, CodecType, H264Codec, H264Profile},
     encoder::EncoderBuilder,
     interceptor::twcc::TwccBandwidthEstimate,
     peer::IceConnectionState,

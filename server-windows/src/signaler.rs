@@ -21,24 +21,43 @@ impl WebSocketSignaler {
             rx: Mutex::new(rx),
         }
     }
+
+    async fn recv_impl(&self) -> Result<Message, WebSocketSignalerError> {
+        match self.rx.lock().await.next().await {
+            Some(ws_msg) => match ws_msg?.to_str() {
+                Ok(s) => {
+                    let msg = serde_json::from_str::<Message>(s)?;
+                    Ok(msg)
+                }
+                _ => Err(WebSocketSignalerError::Serde),
+            },
+            _ => Err(WebSocketSignalerError::Eof), // closed
+        }
+    }
+
+    async fn send_impl(&self, msg: Message) -> Result<(), WebSocketSignalerError> {
+        let s = serde_json::to_string(&msg)?;
+        let ws_msg = warp::ws::Message::text(s);
+        self.tx.lock().await.send(ws_msg).await?;
+        Ok(())
+    }
 }
 
 /// Errors that WebSocketSignaler can emit
+#[derive(Debug)]
 pub enum WebSocketSignalerError {
-    Warp(warp::Error),
-    Serde(serde_json::Error),
-    MessageToStr,
+    Warp,
+    Serde,
     Eof,
 }
 
 impl std::fmt::Display for WebSocketSignalerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WebSocketSignalerError::Warp(e) => e.fmt(f),
-            WebSocketSignalerError::Serde(e) => e.fmt(f),
-            WebSocketSignalerError::MessageToStr => {
-                write!(f, "Failed to convert WebSocket message to a `&str`")
+            WebSocketSignalerError::Warp => {
+                write!(f, "Encountered an error in the underlying WebSocket")
             }
+            WebSocketSignalerError::Serde => write!(f, "Failed to deserialize the message"),
             WebSocketSignalerError::Eof => {
                 write!(f, "WebSocket connection has been closed")
             }
@@ -46,39 +65,36 @@ impl std::fmt::Display for WebSocketSignalerError {
     }
 }
 
-impl From<warp::Error> for WebSocketSignalerError {
-    fn from(value: warp::Error) -> Self {
-        WebSocketSignalerError::Warp(value)
-    }
+impl std::error::Error for WebSocketSignalerError {}
+
+// The conversion only cares about the error type and discards the error details.
+macro_rules! impl_from {
+    ($t:ty, $e:tt) => {
+        impl From<$t> for WebSocketSignalerError {
+            #[inline]
+            fn from(_: $t) -> Self {
+                WebSocketSignalerError::$e
+            }
+        }
+    };
 }
 
-impl From<serde_json::Error> for WebSocketSignalerError {
-    fn from(value: serde_json::Error) -> Self {
-        WebSocketSignalerError::Serde(value)
-    }
-}
+impl_from!(warp::Error, Warp);
+impl_from!(serde_json::Error, Serde);
 
 #[async_trait::async_trait]
 impl Signaler for WebSocketSignaler {
-    type Error = WebSocketSignalerError;
-
-    async fn recv(&self) -> Result<Message, Self::Error> {
-        match self.rx.lock().await.next().await {
-            Some(ws_msg) => match ws_msg?.to_str() {
-                Ok(s) => {
-                    let msg = serde_json::from_str::<Message>(s)?;
-                    Ok(msg)
-                }
-                _ => Err(WebSocketSignalerError::MessageToStr),
-            },
-            _ => Err(WebSocketSignalerError::Eof), // closed
+    async fn recv(&self) -> Result<Message, Box<dyn std::error::Error + Send>> {
+        match self.recv_impl().await {
+            Ok(msg) => Ok(msg),
+            Err(e) => Err(Box::new(e)),
         }
     }
 
-    async fn send(&self, msg: Message) -> Result<(), Self::Error> {
-        let s = serde_json::to_string(&msg)?;
-        let ws_msg = warp::ws::Message::text(s);
-        self.tx.lock().await.send(ws_msg).await?;
-        Ok(())
+    async fn send(&self, msg: Message) -> Result<(), Box<dyn std::error::Error + Send>> {
+        match self.send_impl(msg).await {
+            Ok(()) => Ok(()),
+            Err(e) => Err(Box::new(e)),
+        }
     }
 }

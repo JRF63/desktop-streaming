@@ -165,12 +165,7 @@ impl NvidiaEncoderOutput {
             // Send the encoded frames
             let write_result = handle.block_on(async {
                 self.payloader
-                    .send_payload(
-                        RTP_MTU - 12,
-                        &mut self.header,
-                        slice,
-                        &*self.rtp_track,
-                    )
+                    .send_payload(RTP_MTU - 12, &mut self.header, slice, &*self.rtp_track)
                     .await
             });
 
