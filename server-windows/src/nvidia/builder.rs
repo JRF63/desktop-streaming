@@ -160,6 +160,7 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             bandwidth_estimate,
             payload_type,
             ssrc,
+            codec_capability.clock_rate,
         ));
     }
 }

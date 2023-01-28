@@ -72,7 +72,7 @@ impl NvidiaEncoderInput {
             .acquire_frame(self.acquire_timeout_millis)
         {
             Ok((acquired_image, info)) => {
-                let timestamp = u64::from_ne_bytes(info.LastPresentTime.to_ne_bytes());
+                let timestamp = info.LastPresentTime as u64;
                 self.input.encode_frame(acquired_image, timestamp, || {
                     self.screen_duplicator.release_frame().unwrap()
                 })?;
@@ -117,8 +117,11 @@ struct NvidiaEncoderOutput {
     output: nvenc::EncoderOutput,
     rtp_track: Arc<TrackLocalStaticRTP>,
     payloader: H264SampleSender,
-    timer_frequency: u64,
     header: Header,
+    clock_rate: u32,
+    timer_frequency: u64,
+    timestamp: u32,
+    prev_timestamp_source: Option<u64>,
 }
 
 impl NvidiaEncoderOutput {
@@ -127,6 +130,7 @@ impl NvidiaEncoderOutput {
         rtp_track: Arc<TrackLocalStaticRTP>,
         payload_type: u8,
         ssrc: u32,
+        clock_rate: u32,
     ) -> NvidiaEncoderOutput {
         let payloader = H264SampleSender::default();
         let timer_frequency = timer_frequency();
@@ -145,8 +149,11 @@ impl NvidiaEncoderOutput {
             output,
             rtp_track,
             payloader,
-            timer_frequency,
             header,
+            clock_rate,
+            timer_frequency,
+            timestamp: rand::random::<u32>(),
+            prev_timestamp_source: None,
         }
     }
 
@@ -159,8 +166,19 @@ impl NvidiaEncoderOutput {
                 )
             };
 
-            self.header.timestamp =
-                convert_to_90_khz_timestamp(lock.outputTimeStamp, self.timer_frequency);
+            // This conversion is chosen even though it causes the timestamp to be prone to drift
+            // because only accurate frame intervals are important.
+            if let Some(prev) = self.prev_timestamp_source {
+                let delta_source = lock.outputTimeStamp.wrapping_sub(prev);
+                let delta =
+                    delta_source.wrapping_mul(self.clock_rate as u64) / self.timer_frequency;
+                // Accumulates small errors coming from `delta`. Can cause the timestamp to drift
+                // from the source's timestamp.
+                self.timestamp = self.timestamp.wrapping_add(delta as u32);
+            }
+            self.prev_timestamp_source = Some(lock.outputTimeStamp);
+
+            self.header.timestamp = self.timestamp;
 
             // Send the encoded frames
             let write_result = handle.block_on(async {
@@ -236,6 +254,7 @@ pub async fn start_encoder(
     bandwidth_estimate: TwccBandwidthEstimate,
     payload_type: u8,
     ssrc: u32,
+    clock_rate: u32,
 ) {
     while *ice_connection_state.borrow() != RTCIceConnectionState::Connected {
         if let Err(_) = ice_connection_state.changed().await {
@@ -255,7 +274,7 @@ pub async fn start_encoder(
     ));
 
     let mut input = NvidiaEncoderInput::new(screen_duplicator, input, bandwidth_estimate, rtcp_rx);
-    let mut output = NvidiaEncoderOutput::new(output, rtp_track, payload_type, ssrc);
+    let mut output = NvidiaEncoderOutput::new(output, rtp_track, payload_type, ssrc, clock_rate);
 
     let ice_1 = ice_connection_state;
     let ice_2 = ice_1.clone();
@@ -286,9 +305,5 @@ fn timer_frequency() -> u64 {
     unsafe {
         QueryPerformanceFrequency(&mut timer_frequency);
     }
-    u64::from_ne_bytes(timer_frequency.to_ne_bytes())
-}
-
-fn convert_to_90_khz_timestamp(time_stamp: u64, timer_frequency: u64) -> u32 {
-    ((time_stamp * 90000) / timer_frequency) as u32
+    timer_frequency as u64
 }
