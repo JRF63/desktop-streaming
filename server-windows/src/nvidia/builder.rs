@@ -279,16 +279,34 @@ fn list_supported_codecs(
     Ok(codecs)
 }
 
-// FIXME: Parsing is incomplete and not very efficient. Use regex.
 fn h264_profile_from_sdp_fmtp_line(sdp_fmtp_line: &str) -> Option<nvenc::CodecProfile> {
     if let Some((_, id)) = sdp_fmtp_line.split_once("profile-level-id=") {
         if id.len() >= 6 {
-            if id.starts_with("42") {
-                return Some(nvenc::CodecProfile::H264Baseline);
-            } else if id.starts_with("4d") {
-                return Some(nvenc::CodecProfile::H264Main);
-            } else if id.starts_with("64") {
-                return Some(nvenc::CodecProfile::H264High);
+            if let Ok(profile) = H264Profile::from_str(id) {
+                match profile {
+                    H264Profile::ConstrainedBaseline | H264Profile::Baseline => {
+                        return Some(nvenc::CodecProfile::H264Baseline)
+                    }
+                    H264Profile::Main | H264Profile::Extended => {
+                        return Some(nvenc::CodecProfile::H264Main)
+                    }
+                    H264Profile::High | H264Profile::High10 | H264Profile::High422 => {
+                        return Some(nvenc::CodecProfile::H264High)
+                    }
+                    H264Profile::ProgressiveHigh => {
+                        return Some(nvenc::CodecProfile::H264ProgressiveHigh)
+                    }
+                    H264Profile::ConstrainedHigh => {
+                        return Some(nvenc::CodecProfile::H264ConstrainedHigh)
+                    }
+                    H264Profile::High444 => return Some(nvenc::CodecProfile::H264High444),
+                    H264Profile::StereoHigh => return Some(nvenc::CodecProfile::H264Stereo),
+                    H264Profile::High10Intra
+                    | H264Profile::High422Intra
+                    | H264Profile::High444Intra
+                    | H264Profile::Cavlc444Intra => (),
+                    _ => (),
+                }
             }
         }
     }
@@ -313,6 +331,8 @@ mod tests {
             // reordered
             "level-asymmetry-allowed=1;profile-level-id=42001f;packetization-mode=1",
             "profile-level-id=42001f;level-asymmetry-allowed=1;packetization-mode=1",
+            // extra
+            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=640c1f",
         ];
 
         let profiles = [
@@ -325,6 +345,7 @@ mod tests {
             nvenc::CodecProfile::H264High,
             nvenc::CodecProfile::H264Baseline,
             nvenc::CodecProfile::H264Baseline,
+            nvenc::CodecProfile::H264ConstrainedHigh,
         ];
 
         for (sdp_fmtp_line, profile) in test_cases.iter().zip(profiles) {
