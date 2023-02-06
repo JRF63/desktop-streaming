@@ -181,7 +181,7 @@ impl NvidiaEncoderBuilder {
                 panic!("Error while creating the encoder: {e}");
             }
         };
-        if let Err(e) = inner_builder.repeat_csd() {
+        if let Err(e) = inner_builder.repeat_csd(true) {
             panic!("Error while setting encoder option: {e}");
         }
 

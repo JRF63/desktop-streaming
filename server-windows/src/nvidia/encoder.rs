@@ -23,8 +23,8 @@ use windows::Win32::{
 
 const RTP_MTU: usize = 1200;
 const RTCP_MAX_MTU: usize = 1500;
-const MIN_BITRATE_MBPS: u32 = 10_000;
-const MAX_BITRATE_MBPS: u32 = 100_000_000;
+const MIN_BITRATE_BPS: u32 = 64_000;
+const MAX_BITRATE_BPS: u32 = 100_000_000;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum RtcpEvent {
@@ -37,6 +37,8 @@ struct NvidiaEncoderInput {
     acquire_timeout_millis: u32,
     input: nvenc::EncoderInput<nvenc::DirectX11Device>,
     bandwidth_estimate: TwccBandwidthEstimate,
+    frame_rate_num: u32,
+    frame_rate_den: u32,
     rtcp_rx: UnboundedReceiver<RtcpEvent>,
 }
 
@@ -47,6 +49,13 @@ impl NvidiaEncoderInput {
         bandwidth_estimate: TwccBandwidthEstimate,
         rtcp_rx: UnboundedReceiver<RtcpEvent>,
     ) -> NvidiaEncoderInput {
+        let (frame_rate_num, frame_rate_den) = {
+            let display_desc = screen_duplicator.desc();
+            (
+                display_desc.ModeDesc.RefreshRate.Numerator,
+                display_desc.ModeDesc.RefreshRate.Numerator,
+            )
+        };
         // Half of frame interval to allow processing RTCP in-between
         let acquire_timeout_millis = (screen_duplicator.frame_interval() / 2).as_millis() as u32;
         NvidiaEncoderInput {
@@ -54,14 +63,21 @@ impl NvidiaEncoderInput {
             acquire_timeout_millis,
             input,
             bandwidth_estimate,
+            frame_rate_num,
+            frame_rate_den,
             rtcp_rx,
         }
     }
 
     fn update_bitrate(&mut self) {
         let bitrate = self.bandwidth_estimate.borrow().bits_per_sec() as u32;
-        let bitrate = bitrate.clamp(MIN_BITRATE_MBPS, MAX_BITRATE_MBPS);
-        if let Err(e) = self.input.update_average_bitrate(bitrate) {
+        let bitrate = bitrate.clamp(MIN_BITRATE_BPS, MAX_BITRATE_BPS);
+        // Divide first to prevent overflow
+        let vbv_buffer_size = bitrate / self.frame_rate_num * self.frame_rate_den;
+        if let Err(e) = self
+            .input
+            .update_average_bitrate(bitrate, Some(vbv_buffer_size))
+        {
             log::error!("Error trying to update bitrate: {e}");
         }
     }
