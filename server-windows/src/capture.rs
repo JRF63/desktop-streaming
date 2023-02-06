@@ -49,27 +49,27 @@ impl ScreenDuplicator {
         let supported_formats = supported_formats.into_boxed_slice();
         let is_dpi_aware = ScreenDuplicator::try_set_dpi_aware()?;
         let dxgi_device: IDXGIDevice = d3d11_device.cast()?;
-        let duplicator = unsafe {
+
+        // SAFETY: Windows API call
+        let dxgi_output = unsafe {
             let adapter = dxgi_device.GetAdapter()?;
-            let dxgi_output = adapter.EnumOutputs(display_index)?;
-
-            let output_dupl = ScreenDuplicator::new_output_duplicator(
-                &dxgi_output,
-                &dxgi_device,
-                &supported_formats,
-                is_dpi_aware,
-            )?;
-
-            ScreenDuplicator {
-                output_dupl,
-                dxgi_output,
-                dxgi_device,
-                supported_formats,
-                is_dpi_aware,
-            }
+            adapter.EnumOutputs(display_index)?
         };
 
-        Ok(duplicator)
+        let output_dupl = ScreenDuplicator::new_output_duplicator(
+            &dxgi_output,
+            &dxgi_device,
+            &supported_formats,
+            is_dpi_aware,
+        )?;
+
+        Ok(ScreenDuplicator {
+            output_dupl,
+            dxgi_output,
+            dxgi_device,
+            supported_formats,
+            is_dpi_aware,
+        })
     }
 
     /// Returns a description of the display that is currently being duplicated.
@@ -90,6 +90,7 @@ impl ScreenDuplicator {
         Duration::from_secs(refresh_rate.Denominator as u64) / refresh_rate.Numerator
     }
 
+    /// Get the next available frame.
     #[inline]
     pub fn acquire_frame(
         &mut self,
