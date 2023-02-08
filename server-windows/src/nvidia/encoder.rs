@@ -34,7 +34,6 @@ enum RtcpEvent {
 
 struct NvidiaEncoderInput {
     screen_duplicator: ScreenDuplicator,
-    acquire_timeout_millis: u32,
     input: nvenc::EncoderInput<nvenc::DirectX11Device>,
     bandwidth_estimate: TwccBandwidthEstimate,
     frame_rate_num: u32,
@@ -56,11 +55,9 @@ impl NvidiaEncoderInput {
                 display_desc.ModeDesc.RefreshRate.Numerator,
             )
         };
-        // Half of frame interval to allow processing RTCP in-between
-        let acquire_timeout_millis = (screen_duplicator.frame_interval() / 2).as_millis() as u32;
+        
         NvidiaEncoderInput {
             screen_duplicator,
-            acquire_timeout_millis,
             input,
             bandwidth_estimate,
             frame_rate_num,
@@ -83,10 +80,7 @@ impl NvidiaEncoderInput {
     }
 
     fn encode(&mut self) -> Result<(), nvenc::NvEncError> {
-        match self
-            .screen_duplicator
-            .acquire_frame(self.acquire_timeout_millis)
-        {
+        match self.screen_duplicator.acquire_frame(4294967295u32) {
             Ok((acquired_image, info)) => {
                 let timestamp = info.LastPresentTime as u64;
                 self.input.encode_frame(acquired_image, timestamp, || {
@@ -96,27 +90,7 @@ impl NvidiaEncoderInput {
             }
             Err(e) => {
                 match e.code() {
-                    DXGI_ERROR_WAIT_TIMEOUT => {
-                        if let Ok(true) = self.bandwidth_estimate.has_changed() {
-                            self.update_bitrate();
-                        }
-
-                        match self.rtcp_rx.try_recv() {
-                            Ok(RtcpEvent::Pli) => {
-                                // FIXME: Properly handle SSRC
-                                self.input.force_idr_on_next();
-                                log::info!("PLI received");
-                            }
-                            Ok(RtcpEvent::Fir) => {
-                                // FIXME: Properly handle SSRC and seq nums
-                                self.input.force_idr_on_next();
-                                log::info!("FIR received");
-                            }
-                            _ => (), // Ignore errors
-                        }
-
-                        Ok(())
-                    }
+                    DXGI_ERROR_WAIT_TIMEOUT => Ok(()),
                     DXGI_ERROR_ACCESS_LOST => {
                         // Reset duplicator then move on to next frame acquisition
                         self.screen_duplicator.reset_output_duplicator().unwrap();
@@ -295,14 +269,41 @@ pub async fn start_encoder(
     let ice_1 = ice_connection_state;
     let ice_2 = ice_1.clone();
 
-    std::thread::spawn(move || {
+    tokio::spawn(tokio::task::unconstrained(async move {
+        // TODO: Frame interval should be configurable and/or signaled in SDP
+        let mut interval = tokio::time::interval(std::time::Duration::from_nanos(16_666_667));
         while *ice_1.borrow() == RTCIceConnectionState::Connected {
-            if let Err(e) = input.encode() {
-                log::error!("Error encoding: {e}");
+            // TODO: *Average* frame interval is correct but the min/max is off by a lot
+            tokio::select! {
+                _ = interval.tick() => {
+                    if let Err(e) = input.encode() {
+                        log::error!("Error encoding: {e}");
+                    }
+                }
+                msg = input.rtcp_rx.recv() => {
+                    match msg {
+                        Some(event) => match event {
+                            RtcpEvent::Pli => {
+                                // FIXME: Properly handle SSRC
+                                input.input.force_idr_on_next();
+                                log::info!("PLI received");
+                            }
+                            RtcpEvent::Fir => {
+                                // FIXME: Properly handle SSRC and seq nums
+                                input.input.force_idr_on_next();
+                                log::info!("FIR received");
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                _ = input.bandwidth_estimate.changed() => {
+                    input.update_bitrate();
+                }
             }
         }
         log::info!("Input thread exited");
-    });
+    }));
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {

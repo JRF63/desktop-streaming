@@ -1,4 +1,4 @@
-use std::{mem::MaybeUninit, time::Duration};
+use std::mem::MaybeUninit;
 use windows::{
     core::Interface,
     Win32::{
@@ -80,14 +80,6 @@ impl ScreenDuplicator {
             self.output_dupl.GetDesc(dupl_desc.as_mut_ptr());
             dupl_desc.assume_init()
         }
-    }
-
-    /// Returns the average interval between each successive frame based on the monitor's refresh
-    /// rate.
-    pub fn frame_interval(&self) -> Duration {
-        let dupl_desc = self.desc();
-        let refresh_rate = &dupl_desc.ModeDesc.RefreshRate;
-        Duration::from_secs(refresh_rate.Denominator as u64) / refresh_rate.Numerator
     }
 
     /// Get the next available frame.
