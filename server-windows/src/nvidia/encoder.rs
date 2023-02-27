@@ -1,4 +1,4 @@
-use crate::capture::ScreenDuplicator;
+use crate::capture::{AcquireFrameError, ScreenDuplicator};
 use std::sync::Arc;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use webrtc::{
@@ -16,10 +16,7 @@ use webrtc::{
 use webrtc_helper::{
     codecs::H264SampleSender, interceptor::twcc::TwccBandwidthEstimate, peer::IceConnectionState,
 };
-use windows::Win32::{
-    Graphics::Dxgi::{DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT},
-    System::Performance::QueryPerformanceFrequency,
-};
+use windows::Win32::System::Performance::QueryPerformanceFrequency;
 
 const RTP_MTU: usize = 1200;
 const RTCP_MAX_MTU: usize = 1500;
@@ -55,7 +52,7 @@ impl NvidiaEncoderInput {
                 display_desc.ModeDesc.RefreshRate.Numerator,
             )
         };
-        
+
         NvidiaEncoderInput {
             screen_duplicator,
             input,
@@ -83,22 +80,16 @@ impl NvidiaEncoderInput {
         match self.screen_duplicator.acquire_frame(4294967295u32) {
             Ok((acquired_image, info)) => {
                 let timestamp = info.LastPresentTime as u64;
-                self.input.encode_frame(acquired_image, timestamp, || {
-                    self.screen_duplicator.release_frame().unwrap()
-                })?;
+                // Check if image was updated
+                if timestamp != 0 {
+                    self.input.encode_frame(acquired_image, timestamp)?;
+                }
                 Ok(())
             }
-            Err(e) => {
-                match e.code() {
-                    DXGI_ERROR_WAIT_TIMEOUT => Ok(()),
-                    DXGI_ERROR_ACCESS_LOST => {
-                        // Reset duplicator then move on to next frame acquisition
-                        self.screen_duplicator.reset_output_duplicator().unwrap();
-                        Ok(())
-                    }
-                    _ => panic!("{}", e),
-                }
-            }
+            Err(e) => match e {
+                AcquireFrameError::Retry => Ok(()),
+                AcquireFrameError::Unknown => panic!("{:?}", e),
+            },
         }
     }
 }

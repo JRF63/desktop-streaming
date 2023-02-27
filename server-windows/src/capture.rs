@@ -7,7 +7,8 @@ use windows::{
             Direct3D11::{ID3D11Device, ID3D11Texture2D},
             Dxgi::{
                 Common::DXGI_FORMAT, IDXGIDevice, IDXGIOutput, IDXGIOutput1, IDXGIOutput5,
-                IDXGIOutputDuplication, DXGI_OUTDUPL_DESC, DXGI_OUTDUPL_FRAME_INFO,
+                IDXGIOutputDuplication, DXGI_ERROR_ACCESS_LOST, DXGI_ERROR_WAIT_TIMEOUT,
+                DXGI_OUTDUPL_DESC, DXGI_OUTDUPL_FRAME_INFO,
             },
         },
         UI::HiDpi::{
@@ -83,11 +84,14 @@ impl ScreenDuplicator {
     }
 
     /// Get the next available frame.
+    /// 
+    /// This method returns an `AcquiredFrame` on success. An error of value
+    /// `AcquireFrameError::Retry` is non-fatal and the caller can try to call this method again.
     #[inline]
-    pub fn acquire_frame(
-        &mut self,
+    pub fn acquire_frame<'a>(
+        &'a mut self,
         timeout_millis: u32,
-    ) -> Result<(ID3D11Texture2D, DXGI_OUTDUPL_FRAME_INFO), windows::core::Error> {
+    ) -> Result<(AcquiredFrame<'a>, DXGI_OUTDUPL_FRAME_INFO), AcquireFrameError> {
         let mut frame_info: MaybeUninit<DXGI_OUTDUPL_FRAME_INFO> = MaybeUninit::uninit();
         let mut resource = None;
 
@@ -110,15 +114,30 @@ impl ScreenDuplicator {
 
                 // SAFETY: `IDXGIResource` to `ID3D11Texture2D` should never fail.
                 let image = unsafe { resource.cast().unwrap_unchecked() };
-                Ok((image, frame_info))
+
+                let acquired_image = AcquiredFrame {
+                    frame: image,
+                    duplicator: self,
+                };
+
+                Ok((acquired_image, frame_info))
             }
-            Err(e) => Err(e),
+            Err(e) => match e.code() {
+                DXGI_ERROR_WAIT_TIMEOUT => Err(AcquireFrameError::Retry),
+                DXGI_ERROR_ACCESS_LOST => {
+                    // Reset duplicator then move on to next frame acquisition
+                    self.reset_output_duplicator()
+                        .map_err(|_| AcquireFrameError::Unknown)?;
+                    Err(AcquireFrameError::Retry)
+                }
+                _ => Err(AcquireFrameError::Unknown),
+            },
         }
     }
 
     /// Signals that the current frame is done being processed.
     #[inline]
-    pub fn release_frame(&mut self) -> Result<(), windows::core::Error> {
+    fn release_frame(&mut self) -> Result<(), windows::core::Error> {
         unsafe {
             self.output_dupl.ReleaseFrame()?;
             Ok(())
@@ -188,6 +207,32 @@ impl ScreenDuplicator {
             }
         }
     }
+}
+
+/// Result of a successful `ScreenDuplicator::acquire_frame`.
+pub struct AcquiredFrame<'a> {
+    frame: ID3D11Texture2D,
+    duplicator: &'a mut ScreenDuplicator,
+}
+
+impl<'a> Drop for AcquiredFrame<'a> {
+    #[inline]
+    fn drop(&mut self) {
+        let _ = self.duplicator.release_frame();
+    }
+}
+
+impl<'a> AsRef<ID3D11Texture2D> for AcquiredFrame<'a> {
+    fn as_ref(&self) -> &ID3D11Texture2D {
+        &self.frame
+    }
+}
+
+/// Errors that `ScreenDuplicator::acquire_frame` can return.
+#[derive(Debug)]
+pub enum AcquireFrameError {
+    Retry,
+    Unknown,
 }
 
 #[cfg(test)]

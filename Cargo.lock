@@ -699,6 +699,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "exp-golomb"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8150b1c064c6d23fef1c0ab16c2a3d4564483e468debec91a1b1b1ade7a8b06"
+
+[[package]]
 name = "fastrand"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2676,6 +2682,7 @@ dependencies = [
  "base64",
  "bytes",
  "env_logger",
+ "exp-golomb",
  "log",
  "serde",
  "serde_json",

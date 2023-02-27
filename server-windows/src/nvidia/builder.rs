@@ -138,16 +138,12 @@ impl EncoderBuilder for NvidiaEncoderBuilder {
             (mode_desc.Width, mode_desc.Height, mode_desc.Format)
         };
 
-        let (input, output) =
-            match self
-                .inner_builder
-                .build(width, height, texture_format, None, None)
-            {
-                Ok((input, output)) => (input, output),
-                Err(e) => {
-                    panic!("Failed to build encoder: {e}");
-                }
-            };
+        let (input, output) = match self.inner_builder.build(width, height, texture_format) {
+            Ok((input, output)) => (input, output),
+            Err(e) => {
+                panic!("Failed to build encoder: {e}");
+            }
+        };
 
         let handle = tokio::runtime::Handle::current();
         handle.spawn(start_encoder(
