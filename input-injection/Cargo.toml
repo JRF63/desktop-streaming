@@ -1,0 +1,11 @@
+[package]
+name = "input-injection"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "UI_Input_Preview_Injection"
+] }

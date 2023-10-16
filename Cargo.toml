@@ -1,6 +1,13 @@
-[workspace]
-members = ["server-windows", "webrtc-helper"]
-exclude = ["client-android", "nvenc-rs"]
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Joseph Rafael Ferrer <rafael2x0@gmail.com>"]
+license = "MIT OR Apache-2.0"
 
-[profile.release]
-lto = true
+[workspace]
+resolver = "2"
+members = ["audio-capture", "input-injection"]
+exclude = ["windows-reexport"]
+
+[workspace.dependencies]
+windows = { package = "windows-reexport", path = "windows-reexport" }
