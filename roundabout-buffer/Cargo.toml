@@ -1,5 +1,5 @@
 [package]
-name = "roundabout_buffer"
+name = "roundabout-buffer"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

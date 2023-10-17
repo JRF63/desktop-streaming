@@ -59,9 +59,9 @@ unsafe impl<T, const N: usize> Send for RoundaboutBufferWriter<T, N> where T: Se
 impl<T, const N: usize> RoundaboutBufferWriter<T, N> {
     /// Modify an item on the buffer. Blocks if the buffer is full.
     #[inline]
-    pub fn write<F, R>(&mut self, write_op: F) -> R
+    pub fn write<F, R>(&mut self, mut write_op: F) -> R
     where
-        F: FnOnce(usize, &mut T) -> R,
+        F: FnMut(usize, &mut T) -> R,
     {
         // Needs to synchronize-with the `store` below since this might be moved to another thread
         let head = self.0.head.load(Ordering::Acquire);
@@ -95,9 +95,9 @@ unsafe impl<T, const N: usize> Send for RoundaboutBufferReader<T, N> where T: Se
 impl<T, const N: usize> RoundaboutBufferReader<T, N> {
     /// Read an item on the buffer. Blocks if the buffer is empty.
     #[inline]
-    pub fn read<F, R>(&mut self, read_op: F) -> R
+    pub fn read<F, R>(&mut self, mut read_op: F) -> R
     where
-        F: FnOnce(usize, &T) -> R,
+        F: FnMut(usize, &T) -> R,
     {
         // Needs to synchronize-with the `store` below since this might be moved to another thread
         let tail = self.0.tail.load(Ordering::Acquire);
