@@ -1,0 +1,12 @@
+[package]
+name = "roundabout_buffer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+crossbeam-utils = "0.8.16" # For `crossbeam_utils::CachePadded`
+
+[dev-dependencies]
+rand = "0.8.5"
