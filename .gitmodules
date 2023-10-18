@@ -1,0 +1,3 @@
+[submodule "audio-encoder/opus"]
+	path = audio-encoder/opus
+	url = https://github.com/xiph/opus.git
