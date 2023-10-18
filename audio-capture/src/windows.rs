@@ -1,4 +1,4 @@
-use roundabout_buffer::{RoundaboutBuffer, RoundaboutBufferReader, RoundaboutBufferWriter};
+use roundabout_buffer::{RoundaboutBufferReader, RoundaboutBufferWriter};
 use std::{
     mem::MaybeUninit,
     sync::{
@@ -69,7 +69,7 @@ impl AudioCapture {
         // TODO: Vec::with_capacity
         let buffer = std::array::from_fn(|_| AudioData::new());
 
-        let (writer, reader) = RoundaboutBuffer::channel(buffer);
+        let (writer, reader) = roundabout_buffer::channel(buffer);
         let running = Arc::new(AtomicBool::new(false));
         Self {
             reader,

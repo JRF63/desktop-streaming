@@ -1,6 +1,7 @@
 use crossbeam_utils::CachePadded;
 use std::{
     cell::UnsafeCell,
+    ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -26,22 +27,9 @@ pub struct RoundaboutBuffer<T, const N: usize> {
 }
 
 impl<T, const N: usize> RoundaboutBuffer<T, N> {
-    /// Create a new reader/writer pair. The data structure *may* be more efficient if `N` is a
-    /// power of two.
-    pub fn channel(buffer: [T; N]) -> (RoundaboutBufferWriter<T, N>, RoundaboutBufferReader<T, N>) {
-        let roundabout = Arc::new(RoundaboutBuffer {
-            head: AtomicUsize::new(0),
-            tail: AtomicUsize::new(0),
-            buffer: buffer.map(|x| UnsafeCell::new(CachePadded::new(x))),
-        });
-        let writer = RoundaboutBufferWriter(roundabout.clone());
-        let reader = RoundaboutBufferReader(roundabout);
-        (writer, reader)
-    }
-
-    /// Returns the internal buffer. `&mut self` guarantees exclusive access from a single thread.
-    pub fn get_mut(&mut self) -> &mut [UnsafeCell<CachePadded<T>>; N] {
-        &mut self.buffer
+    /// Retrieves the internal buffer.
+    pub fn into_inner(self) -> [CachePadded<T>; N] {
+        self.buffer.map(|x| x.into_inner())
     }
 
     /// Maps `index` to [0, N) for use as an index to the inner buffer.
@@ -51,19 +39,17 @@ impl<T, const N: usize> RoundaboutBuffer<T, N> {
     }
 }
 
+/// Writer half of the `RoundaboutBuffer`.
 #[repr(transparent)]
 pub struct RoundaboutBufferWriter<T, const N: usize>(Arc<RoundaboutBuffer<T, N>>);
 
 unsafe impl<T, const N: usize> Send for RoundaboutBufferWriter<T, N> where T: Send {}
 
 impl<T, const N: usize> RoundaboutBufferWriter<T, N> {
-    /// Modify an item on the buffer. Blocks if the buffer is full.
-    #[inline]
-    pub fn write<F, R>(&mut self, mut write_op: F) -> R
-    where
-        F: FnMut(usize, &mut T) -> R,
-    {
-        // Needs to synchronize-with the `store` below since this might be moved to another thread
+    /// Returns the next item to be written to.
+    pub fn get<'a>(&'a mut self) -> (usize, RoundaboutBufferWriterItem<'a, T, N>) {
+        // Needs to synchronize-with the `store` on RoundaboutBufferWriterItem::drop since this
+        // might be moved to another thread
         let head = self.0.head.load(Ordering::Acquire);
         loop {
             let tail = self.0.tail.load(Ordering::Acquire);
@@ -77,29 +63,77 @@ impl<T, const N: usize> RoundaboutBufferWriter<T, N> {
         }
 
         let index = RoundaboutBuffer::<T, N>::map_to_valid_index(head);
-        let result = unsafe {
+        unsafe {
             let cell = self.0.buffer.get_unchecked(index);
-            write_op(index, &mut *cell.get())
-        };
+            let item = RoundaboutBufferWriterItem {
+                item: &mut *cell.get(),
+                writer: self,
+                next_head: head.wrapping_add(1),
+            };
+            (index, item)
+        }
+    }
 
-        self.0.head.store(head.wrapping_add(1), Ordering::Release);
+    /// Returns the internal `RoundaboutBuffer`.
+    /// 
+    /// This forwards to a call to `Arc::into_inner` and will return exactly one `RoundaboutBuffer`
+    /// if called from the reader and the writer.
+    pub fn into_inner(self) -> Option<RoundaboutBuffer<T, N>> {
+        Arc::into_inner(self.0)
+    }
+
+    /// Modify an item on the buffer. Blocks if the buffer is full.
+    pub fn write<F, R>(&mut self, mut write_op: F) -> R
+    where
+        F: FnMut(usize, &mut T) -> R,
+    {
+        let (index, mut item) = self.get();
+        let result = write_op(index, &mut item);
+        std::mem::drop(item);
         result
     }
 }
 
+/// Represents the item to be written to.
+///
+/// `Drop`-ing the item passes it to the reader.
+pub struct RoundaboutBufferWriterItem<'a, T, const N: usize> {
+    item: &'a mut CachePadded<T>,
+    writer: &'a mut RoundaboutBufferWriter<T, N>,
+    next_head: usize,
+}
+
+impl<'a, T, const N: usize> Drop for RoundaboutBufferWriterItem<'a, T, N> {
+    fn drop(&mut self) {
+        self.writer.0.head.store(self.next_head, Ordering::Release);
+    }
+}
+
+impl<'a, T, const N: usize> Deref for RoundaboutBufferWriterItem<'a, T, N> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.item.deref()
+    }
+}
+
+impl<'a, T, const N: usize> DerefMut for RoundaboutBufferWriterItem<'a, T, N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.item.deref_mut()
+    }
+}
+
+/// Reader half of the `RoundaboutBuffer`.
 #[repr(transparent)]
 pub struct RoundaboutBufferReader<T, const N: usize>(Arc<RoundaboutBuffer<T, N>>);
 
 unsafe impl<T, const N: usize> Send for RoundaboutBufferReader<T, N> where T: Send {}
 
 impl<T, const N: usize> RoundaboutBufferReader<T, N> {
-    /// Read an item on the buffer. Blocks if the buffer is empty.
-    #[inline]
-    pub fn read<F, R>(&mut self, mut read_op: F) -> R
-    where
-        F: FnMut(usize, &T) -> R,
-    {
-        // Needs to synchronize-with the `store` below since this might be moved to another thread
+    /// Returns the next item to be read from.
+    pub fn get<'a>(&'a mut self) -> (usize, RoundaboutBufferReaderItem<'a, T, N>) {
+        // Needs to synchronize-with the `store` on RoundaboutBufferReaderItem::drop since this
+        // might be moved to another thread
         let tail = self.0.tail.load(Ordering::Acquire);
         loop {
             let head = self.0.head.load(Ordering::Acquire);
@@ -113,14 +147,73 @@ impl<T, const N: usize> RoundaboutBufferReader<T, N> {
         }
 
         let index = RoundaboutBuffer::<T, N>::map_to_valid_index(tail);
-        let result = unsafe {
+        unsafe {
             let cell = self.0.buffer.get_unchecked(index);
-            read_op(index, &*cell.get())
-        };
+            let item = RoundaboutBufferReaderItem {
+                item: &*cell.get(),
+                reader: self,
+                next_tail: tail.wrapping_add(1),
+            };
+            (index, item)
+        }
+    }
 
-        self.0.tail.store(tail.wrapping_add(1), Ordering::Release);
+    /// Returns the internal `RoundaboutBuffer`.
+    /// 
+    /// This forwards to a call to `Arc::into_inner` and will return exactly one `RoundaboutBuffer`
+    /// if called from the reader and the writer.
+    pub fn into_inner(self) -> Option<RoundaboutBuffer<T, N>> {
+        Arc::into_inner(self.0)
+    }
+
+    /// Read an item on the buffer. Blocks if the buffer is empty.
+    pub fn read<F, R>(&mut self, mut read_op: F) -> R
+    where
+        F: FnMut(usize, &T) -> R,
+    {
+        let (index, item) = self.get();
+        let result = read_op(index, &item);
+        std::mem::drop(item);
         result
     }
+}
+
+/// Represents the item to be read from.
+///
+/// `Drop`-ing the item passes it back to be reused in the writer.
+pub struct RoundaboutBufferReaderItem<'a, T, const N: usize> {
+    item: &'a CachePadded<T>,
+    reader: &'a mut RoundaboutBufferReader<T, N>,
+    next_tail: usize,
+}
+
+impl<'a, T, const N: usize> Drop for RoundaboutBufferReaderItem<'a, T, N> {
+    fn drop(&mut self) {
+        self.reader.0.tail.store(self.next_tail, Ordering::Release);
+    }
+}
+
+impl<'a, T, const N: usize> Deref for RoundaboutBufferReaderItem<'a, T, N> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.item.deref()
+    }
+}
+
+/// Create a new reader/writer pair. The data structure *may* be more efficient if `N` is a
+/// power of two.
+pub fn channel<T, const N: usize>(
+    buffer: [T; N],
+) -> (RoundaboutBufferWriter<T, N>, RoundaboutBufferReader<T, N>) {
+    let roundabout = Arc::new(RoundaboutBuffer {
+        head: AtomicUsize::new(0),
+        tail: AtomicUsize::new(0),
+        buffer: buffer.map(|x| UnsafeCell::new(CachePadded::new(x))),
+    });
+    let writer = RoundaboutBufferWriter(roundabout.clone());
+    let reader = RoundaboutBufferReader(roundabout);
+    (writer, reader)
 }
 
 #[cfg(test)]
@@ -139,7 +232,7 @@ mod tests {
             const ITERS: i32 = 1000;
 
             let array = [0; 32];
-            let (mut writer, mut reader) = RoundaboutBuffer::channel(array);
+            let (mut writer, mut reader) = channel(array);
 
             let mut rng = StdRng::seed_from_u64(0);
             let write_delay_between = Uniform::from(1..100);
@@ -152,7 +245,7 @@ mod tests {
             let read_delays: Vec<_> = (0..ITERS)
                 .map(|_| Duration::from_micros(read_delay_between.sample(&mut rng)))
                 .collect();
-
+            
             s.spawn(move || {
                 for (i, sleep_dur) in write_delays.into_iter().enumerate() {
                     writer.write(|_, val| {
