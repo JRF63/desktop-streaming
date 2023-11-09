@@ -9,8 +9,14 @@ license.workspace = true
 bitflags = { workspace = true }
 tracing = { workspace = true }
 
-[target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["UI_Input_Preview_Injection"] }
-
 [dev-dependencies]
-tracing-subscriber = { workspace = true }
+approx = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "Gaming_Input",
+    "UI_Input_Preview_Injection",
+] }
+
+[target.'cfg(windows)'.dev-dependencies]
+rusty-xinput = "1.2.1"
