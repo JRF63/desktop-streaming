@@ -6,8 +6,11 @@ license = "MIT OR Apache-2.0"
 
 [workspace]
 resolver = "2"
-members = ["audio-capture", "audio-encoder", "input-injection", "roundabout-buffer"]
+members = ["audio-capture", "audio-encoder", "conveyor-buffer", "input-injection"]
 exclude = ["windows-reexport"]
 
 [workspace.dependencies]
-windows = { package = "windows-reexport", path = "windows-reexport" }
+bitflags = "2.4.1"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.17"
+windows = { package = "windows-reexport", path = "windows-reexport" } # version = "0.51.1"

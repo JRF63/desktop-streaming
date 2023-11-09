@@ -3,7 +3,7 @@ name = "windows-reexport"
 version = "0.51.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "Conditionally re-exports windows crate"
+description = "Conditionally re-exports the windows crate"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.51.1", default-features = false }

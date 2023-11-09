@@ -1,4 +1,4 @@
-use roundabout_buffer::{RoundaboutBufferReader, RoundaboutBufferWriter};
+use conveyor_buffer::{ConveyorBufferReader, ConveyorBufferWriter};
 use std::{
     mem::MaybeUninit,
     sync::{
@@ -52,7 +52,7 @@ impl AudioData {
 }
 
 pub struct AudioCapture {
-    reader: RoundaboutBufferReader<AudioData, NUM_BUFFERS>,
+    reader: ConveyorBufferReader<AudioData, NUM_BUFFERS>,
     running: Arc<AtomicBool>,
     join_handle: Option<JoinHandle<Result<(), windows::core::Error>>>,
 }
@@ -69,7 +69,7 @@ impl AudioCapture {
         // TODO: Vec::with_capacity
         let buffer = std::array::from_fn(|_| AudioData::new());
 
-        let (writer, reader) = roundabout_buffer::channel(buffer);
+        let (writer, reader) = conveyor_buffer::channel(buffer);
         let running = Arc::new(AtomicBool::new(false));
         Self {
             reader,
@@ -87,7 +87,7 @@ impl AudioCapture {
 
     fn spawn_thread(
         device_id: Option<String>,
-        mut writer: RoundaboutBufferWriter<AudioData, NUM_BUFFERS>,
+        mut writer: ConveyorBufferWriter<AudioData, NUM_BUFFERS>,
         running: Arc<AtomicBool>,
     ) -> JoinHandle<Result<(), windows::core::Error>> {
         running.store(true, Ordering::Release);
@@ -201,7 +201,7 @@ impl AudioClient {
     fn send_audio_data(
         &self,
         capture_client: &IAudioCaptureClient,
-        writer: &mut RoundaboutBufferWriter<AudioData, NUM_BUFFERS>,
+        writer: &mut ConveyorBufferWriter<AudioData, NUM_BUFFERS>,
     ) -> Result<(), windows::core::Error> {
         unsafe {
             match WaitForSingleObject(self.buffer_event, WAIT_INTERVAL_MS) {

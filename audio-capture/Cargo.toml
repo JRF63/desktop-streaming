@@ -15,4 +15,4 @@ windows = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_System_Variant",
 ] }
-roundabout-buffer = { path = "../roundabout-buffer" }
+conveyor-buffer = { path = "../conveyor-buffer" }

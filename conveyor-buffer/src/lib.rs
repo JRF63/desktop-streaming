@@ -17,7 +17,7 @@ use std::{
 /// something must be written before it can be read and the item cannot be read again until after
 /// the next write.
 #[repr(C)]
-pub struct RoundaboutBuffer<T, const N: usize> {
+pub struct ConveyorBuffer<T, const N: usize> {
     /// Index of the writer
     head: AtomicUsize,
     /// Index of the reader
@@ -26,7 +26,7 @@ pub struct RoundaboutBuffer<T, const N: usize> {
     buffer: [UnsafeCell<CachePadded<T>>; N],
 }
 
-impl<T, const N: usize> RoundaboutBuffer<T, N> {
+impl<T, const N: usize> ConveyorBuffer<T, N> {
     /// Retrieves the internal buffer.
     pub fn into_inner(self) -> [CachePadded<T>; N] {
         self.buffer.map(|x| x.into_inner())
@@ -39,16 +39,16 @@ impl<T, const N: usize> RoundaboutBuffer<T, N> {
     }
 }
 
-/// Writer half of the `RoundaboutBuffer`.
+/// Writer half of the `ConveyorBuffer`.
 #[repr(transparent)]
-pub struct RoundaboutBufferWriter<T, const N: usize>(Arc<RoundaboutBuffer<T, N>>);
+pub struct ConveyorBufferWriter<T, const N: usize>(Arc<ConveyorBuffer<T, N>>);
 
-unsafe impl<T, const N: usize> Send for RoundaboutBufferWriter<T, N> where T: Send {}
+unsafe impl<T, const N: usize> Send for ConveyorBufferWriter<T, N> where T: Send {}
 
-impl<T, const N: usize> RoundaboutBufferWriter<T, N> {
+impl<T, const N: usize> ConveyorBufferWriter<T, N> {
     /// Returns the next item to be written to.
-    pub fn get<'a>(&'a mut self) -> (usize, RoundaboutBufferWriterItem<'a, T, N>) {
-        // Needs to synchronize-with the `store` on RoundaboutBufferWriterItem::drop since this
+    pub fn get<'a>(&'a mut self) -> (usize, ConveyorBufferWriterItem<'a, T, N>) {
+        // Needs to synchronize-with the `store` on ConveyorBufferWriterItem::drop since this
         // might be moved to another thread
         let head = self.0.head.load(Ordering::Acquire);
         loop {
@@ -62,10 +62,10 @@ impl<T, const N: usize> RoundaboutBufferWriter<T, N> {
             }
         }
 
-        let index = RoundaboutBuffer::<T, N>::map_to_valid_index(head);
+        let index = ConveyorBuffer::<T, N>::map_to_valid_index(head);
         unsafe {
             let cell = self.0.buffer.get_unchecked(index);
-            let item = RoundaboutBufferWriterItem {
+            let item = ConveyorBufferWriterItem {
                 item: &mut *cell.get(),
                 writer: self,
                 next_head: head.wrapping_add(1),
@@ -74,11 +74,11 @@ impl<T, const N: usize> RoundaboutBufferWriter<T, N> {
         }
     }
 
-    /// Returns the internal `RoundaboutBuffer`.
+    /// Returns the internal `ConveyorBuffer`.
     /// 
-    /// This forwards to a call to `Arc::into_inner` and will return exactly one `RoundaboutBuffer`
-    /// if called from the reader and the writer.
-    pub fn into_inner(self) -> Option<RoundaboutBuffer<T, N>> {
+    /// This forwards to a call to `Arc::into_inner` and will return exactly one `ConveyorBuffer`
+    /// for each channel.
+    pub fn into_inner(self) -> Option<ConveyorBuffer<T, N>> {
         Arc::into_inner(self.0)
     }
 
@@ -97,19 +97,19 @@ impl<T, const N: usize> RoundaboutBufferWriter<T, N> {
 /// Represents the item to be written to.
 ///
 /// `Drop`-ing the item passes it to the reader.
-pub struct RoundaboutBufferWriterItem<'a, T, const N: usize> {
+pub struct ConveyorBufferWriterItem<'a, T, const N: usize> {
     item: &'a mut CachePadded<T>,
-    writer: &'a mut RoundaboutBufferWriter<T, N>,
+    writer: &'a mut ConveyorBufferWriter<T, N>,
     next_head: usize,
 }
 
-impl<'a, T, const N: usize> Drop for RoundaboutBufferWriterItem<'a, T, N> {
+impl<'a, T, const N: usize> Drop for ConveyorBufferWriterItem<'a, T, N> {
     fn drop(&mut self) {
         self.writer.0.head.store(self.next_head, Ordering::Release);
     }
 }
 
-impl<'a, T, const N: usize> Deref for RoundaboutBufferWriterItem<'a, T, N> {
+impl<'a, T, const N: usize> Deref for ConveyorBufferWriterItem<'a, T, N> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -117,22 +117,22 @@ impl<'a, T, const N: usize> Deref for RoundaboutBufferWriterItem<'a, T, N> {
     }
 }
 
-impl<'a, T, const N: usize> DerefMut for RoundaboutBufferWriterItem<'a, T, N> {
+impl<'a, T, const N: usize> DerefMut for ConveyorBufferWriterItem<'a, T, N> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.item.deref_mut()
     }
 }
 
-/// Reader half of the `RoundaboutBuffer`.
+/// Reader half of the `ConveyorBuffer`.
 #[repr(transparent)]
-pub struct RoundaboutBufferReader<T, const N: usize>(Arc<RoundaboutBuffer<T, N>>);
+pub struct ConveyorBufferReader<T, const N: usize>(Arc<ConveyorBuffer<T, N>>);
 
-unsafe impl<T, const N: usize> Send for RoundaboutBufferReader<T, N> where T: Send {}
+unsafe impl<T, const N: usize> Send for ConveyorBufferReader<T, N> where T: Send {}
 
-impl<T, const N: usize> RoundaboutBufferReader<T, N> {
+impl<T, const N: usize> ConveyorBufferReader<T, N> {
     /// Returns the next item to be read from.
-    pub fn get<'a>(&'a mut self) -> (usize, RoundaboutBufferReaderItem<'a, T, N>) {
-        // Needs to synchronize-with the `store` on RoundaboutBufferReaderItem::drop since this
+    pub fn get<'a>(&'a mut self) -> (usize, ConveyorBufferReaderItem<'a, T, N>) {
+        // Needs to synchronize-with the `store` on ConveyorBufferReaderItem::drop since this
         // might be moved to another thread
         let tail = self.0.tail.load(Ordering::Acquire);
         loop {
@@ -146,10 +146,10 @@ impl<T, const N: usize> RoundaboutBufferReader<T, N> {
             }
         }
 
-        let index = RoundaboutBuffer::<T, N>::map_to_valid_index(tail);
+        let index = ConveyorBuffer::<T, N>::map_to_valid_index(tail);
         unsafe {
             let cell = self.0.buffer.get_unchecked(index);
-            let item = RoundaboutBufferReaderItem {
+            let item = ConveyorBufferReaderItem {
                 item: &*cell.get(),
                 reader: self,
                 next_tail: tail.wrapping_add(1),
@@ -158,11 +158,11 @@ impl<T, const N: usize> RoundaboutBufferReader<T, N> {
         }
     }
 
-    /// Returns the internal `RoundaboutBuffer`.
+    /// Returns the internal `ConveyorBuffer`.
     /// 
-    /// This forwards to a call to `Arc::into_inner` and will return exactly one `RoundaboutBuffer`
-    /// if called from the reader and the writer.
-    pub fn into_inner(self) -> Option<RoundaboutBuffer<T, N>> {
+    /// This forwards to a call to `Arc::into_inner` and will return exactly one `ConveyorBuffer`
+    /// for each channel.
+    pub fn into_inner(self) -> Option<ConveyorBuffer<T, N>> {
         Arc::into_inner(self.0)
     }
 
@@ -181,19 +181,19 @@ impl<T, const N: usize> RoundaboutBufferReader<T, N> {
 /// Represents the item to be read from.
 ///
 /// `Drop`-ing the item passes it back to be reused in the writer.
-pub struct RoundaboutBufferReaderItem<'a, T, const N: usize> {
+pub struct ConveyorBufferReaderItem<'a, T, const N: usize> {
     item: &'a CachePadded<T>,
-    reader: &'a mut RoundaboutBufferReader<T, N>,
+    reader: &'a mut ConveyorBufferReader<T, N>,
     next_tail: usize,
 }
 
-impl<'a, T, const N: usize> Drop for RoundaboutBufferReaderItem<'a, T, N> {
+impl<'a, T, const N: usize> Drop for ConveyorBufferReaderItem<'a, T, N> {
     fn drop(&mut self) {
         self.reader.0.tail.store(self.next_tail, Ordering::Release);
     }
 }
 
-impl<'a, T, const N: usize> Deref for RoundaboutBufferReaderItem<'a, T, N> {
+impl<'a, T, const N: usize> Deref for ConveyorBufferReaderItem<'a, T, N> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -205,14 +205,14 @@ impl<'a, T, const N: usize> Deref for RoundaboutBufferReaderItem<'a, T, N> {
 /// power of two.
 pub fn channel<T, const N: usize>(
     buffer: [T; N],
-) -> (RoundaboutBufferWriter<T, N>, RoundaboutBufferReader<T, N>) {
-    let roundabout = Arc::new(RoundaboutBuffer {
+) -> (ConveyorBufferWriter<T, N>, ConveyorBufferReader<T, N>) {
+    let conveyor = Arc::new(ConveyorBuffer {
         head: AtomicUsize::new(0),
         tail: AtomicUsize::new(0),
         buffer: buffer.map(|x| UnsafeCell::new(CachePadded::new(x))),
     });
-    let writer = RoundaboutBufferWriter(roundabout.clone());
-    let reader = RoundaboutBufferReader(roundabout);
+    let writer = ConveyorBufferWriter(conveyor.clone());
+    let reader = ConveyorBufferReader(conveyor);
     (writer, reader)
 }
 
@@ -227,7 +227,7 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn buffer_sanity_check() {
+    fn conveyor_buffer_test() {
         std::thread::scope(|s| {
             const ITERS: i32 = 1000;
 
