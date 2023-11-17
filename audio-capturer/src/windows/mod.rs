@@ -1,7 +1,10 @@
 mod com_thread;
-mod thread_priority_booster;
+mod thread_priority;
 
-use self::{com_thread::ComThread, thread_priority_booster::ThreadPriorityBooster};
+use self::{
+    com_thread::ComThread,
+    thread_priority::{ThreadPriority, ThreadProfile},
+};
 use crate::util::ExtendFromBytes;
 use conveyor_buffer::{ConveyorBufferReader, ConveyorBufferWriter};
 use std::{
@@ -23,10 +26,7 @@ use windows::{
             AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, WAVEFORMATEX, WAVE_FORMAT_PCM,
         },
         System::{
-            Com::{
-                CoCreateInstance, CLSCTX, CLSCTX_INPROC_SERVER,
-                COINIT_MULTITHREADED,
-            },
+            Com::{CoCreateInstance, CLSCTX, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED},
             Threading::{CreateEventA, WaitForSingleObject},
         },
     },
@@ -112,8 +112,10 @@ impl AudioCapturer {
             let thread_model = COINIT_MULTITHREADED;
             // COM usage is in the same process
             let class_context = CLSCTX_INPROC_SERVER;
+            // Minimizes latency
+            let thread_profile = ThreadProfile::ProAudio;
 
-            let _booster = ThreadPriorityBooster::new()?;
+            let _priority = ThreadPriority::new(thread_profile)?;
             let _com = ComThread::new(thread_model)?;
 
             let device_enumerator: IMMDeviceEnumerator =
