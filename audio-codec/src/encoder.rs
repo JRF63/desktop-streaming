@@ -19,7 +19,7 @@ impl Drop for AudioEncoder {
 impl AudioEncoder {
     pub fn new(
         sample_rate: SampleRate,
-        channels: AudioChannel,
+        channels: AudioChannels,
         mode: ApplicationMode,
     ) -> Result<Self, Error> {
         unsafe {
@@ -55,6 +55,80 @@ impl AudioEncoder {
             }
         }
     }
+
+    pub fn set_bitrate_raw(&mut self, bitrate: i32) -> Result<(), Error> {
+        match Bitrate::new(bitrate) {
+            Some(bitrate) => self.set_bitrate(bitrate),
+            None => Err(Error::InvalidBitrate),
+        }
+    }
+
+    pub fn get_bitrate(&mut self) -> Result<Bitrate, Error> {
+        unsafe {
+            let mut bitrate = MaybeUninit::uninit();
+            let ret = sys::opus_encoder_ctl(
+                self.encoder.as_ptr(),
+                sys::OPUS_GET_BITRATE_REQUEST,
+                bitrate.as_mut_ptr(),
+            );
+            match Error::try_from_raw_errorcode(ret) {
+                Some(e) => Err(e),
+                None => Ok(Bitrate(bitrate.assume_init())),
+            }
+        }
+    }
+
+    pub fn encode(
+        &mut self,
+        pcm: &[i16],
+        frame_size: i32,
+        data: &mut [u8],
+    ) -> Result<i32, Error> {
+        unsafe {
+            let ret = sys::opus_encode(
+                self.encoder.as_ptr(),
+                pcm.as_ptr(),
+                frame_size,
+                data.as_mut_ptr(),
+                data.len() as i32,
+            );
+
+            if ret <= 0 {
+                match Error::try_from_raw_errorcode(ret) {
+                    Some(e) => Err(e),
+                    None => Ok(0),
+                }
+            } else {
+                Ok(ret)
+            }
+        }
+    }
+
+    pub fn encode_float(
+        &mut self,
+        pcm: &[f32],
+        frame_size: i32,
+        data: &mut [u8],
+    ) -> Result<i32, Error> {
+        unsafe {
+            let ret = sys::opus_encode_float(
+                self.encoder.as_ptr(),
+                pcm.as_ptr(),
+                frame_size,
+                data.as_mut_ptr(),
+                data.len() as i32,
+            );
+
+            if ret <= 0 {
+                match Error::try_from_raw_errorcode(ret) {
+                    Some(e) => Err(e),
+                    None => Ok(0),
+                }
+            } else {
+                Ok(ret)
+            }
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -74,6 +148,8 @@ pub enum Error {
     InvalidState = sys::OPUS_INVALID_STATE,
     #[error("Memory allocation has failed")]
     AllocFail = sys::OPUS_ALLOC_FAIL,
+    #[error("The provided bitrate falls outside the supported range")]
+    InvalidBitrate = sys::OPUS_ALLOC_FAIL - 1,
 }
 
 impl Error {
@@ -103,7 +179,7 @@ pub enum SampleRate {
 }
 
 #[repr(i32)]
-pub enum AudioChannel {
+pub enum AudioChannels {
     Mono = 1,
     Stereo = 2,
 }
@@ -130,8 +206,11 @@ impl Bitrate {
 
     /// Create a new `Bitrate`. Valid bitrate range is from 500 to 512000 bits per second.
     pub fn new(bitrate: i32) -> Option<Self> {
+        const MIN_BITRATE: i32 = 500;
+        const MAX_BITRATE: i32 = 512000;
+
         match bitrate {
-            500..=512000 => Some(Self(bitrate)),
+            MIN_BITRATE..=MAX_BITRATE => Some(Self(bitrate)),
             _ => None,
         }
     }
@@ -145,7 +224,7 @@ mod tests {
     fn audio_encoder_init_test() {
         AudioEncoder::new(
             SampleRate::Hz48000,
-            AudioChannel::Stereo,
+            AudioChannels::Stereo,
             ApplicationMode::LowDelay,
         )
         .unwrap();
@@ -155,7 +234,7 @@ mod tests {
     fn audio_encoder_set_bitrate_test() {
         let mut audio_encoder = AudioEncoder::new(
             SampleRate::Hz48000,
-            AudioChannel::Stereo,
+            AudioChannels::Stereo,
             ApplicationMode::LowDelay,
         )
         .unwrap();

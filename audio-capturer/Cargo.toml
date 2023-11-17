@@ -1,5 +1,5 @@
 [package]
-name = "audio-capture"
+name = "audio-capturer"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
