@@ -107,6 +107,7 @@ struct BackgroundAudioCapturer {
     audio_capture_client: IAudioCaptureClient,
     buffer_event: HANDLE,
     audio_format: AudioFormat,
+    audio_format_type: AudioFormatType,
 
     // TODO: Useful for setting the volume
     #[allow(dead_code)]
@@ -163,11 +164,49 @@ impl BackgroundAudioCapturer {
         device_id: Arc<Mutex<Option<String>>>,
         class_context: CLSCTX,
     ) -> Result<Self, windows::core::Error> {
-        let device = BackgroundAudioCapturer::create_audio_device(device_enumerator, &device_id)?;
+        let device = BackgroundAudioCapturer::get_source_device(device_enumerator, &device_id)?;
         unsafe {
             let audio_client: IAudioClient = device.Activate(class_context, None)?;
 
-            let min_device_period = {
+            // `AUDCLNT_SHAREMODE_SHARED` because the audio is just being duplicated and has to be
+            // shared with others.
+            // `AUDCLNT_STREAMFLAGS_LOOPBACK` is to signal audio duplication.
+            // `AUDCLNT_STREAMFLAGS_EVENTCALLBACK` is used because events will be used in waiting
+            // for audio data.
+            let share_mode = AUDCLNT_SHAREMODE_SHARED;
+            let mut stream_flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+
+            let mut audio_format = AudioFormat::get_mix_format(&audio_client)?;
+
+            let audio_format_type = match audio_format.audio_format_type() {
+                Some(t) => {
+                    let mut audio_format_type = t;
+                    
+                    if !audio_format.is_sampling_rate_supported_by_encoder() {
+                        audio_format.set_sampling_rate_to_supported();
+                        if !audio_format.is_supported_by_device(&audio_client, share_mode)? {
+                            stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+                                | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+                            audio_format = AudioFormat::opus_encoder_input_format(
+                                audio_format.get_sampling_rate(),
+                            )?;
+                            audio_format_type = AudioFormatType::Pcm;
+                        }
+                    }
+                    audio_format_type
+                }
+                None => {
+                    // Format is unsupported by the encoder so auto-convert it to a high-quality
+                    // PCM stream.
+                    stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+                        | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+                    audio_format =
+                        AudioFormat::opus_encoder_input_format(audio_format.get_sampling_rate())?;
+                    AudioFormatType::Pcm
+                }
+            };
+
+            let buffer_duration = {
                 let mut default_device_period = MaybeUninit::uninit(); // Not going to be used
                 let mut min_device_period = MaybeUninit::uninit();
 
@@ -178,45 +217,19 @@ impl BackgroundAudioCapturer {
                 min_device_period.assume_init()
             };
 
-            let mut stream_flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
-
-            let mut audio_format = AudioFormat::get_mix_format(&audio_client)?;
-            // match audio_format.audio_format_type() {
-            //     AudioFormatType::Pcm => todo!(),
-            //     AudioFormatType::IeeeFloat => todo!(),
-            //     AudioFormatType::Opus => todo!(),
-            //     AudioFormatType::Other => {
-            //         stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-            //             | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-            //         audio_format =
-            //             AudioFormat::opus_encoder_input_format(audio_format.get_bitrate())?;
-            //     }
-            // }
-            match audio_format.audio_format_type() {
-                Some(AudioFormatType::Pcm) => todo!(),
-                Some(AudioFormatType::IeeeFloat) => todo!(),
-                None => {
-                    stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-                        | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-                    audio_format =
-                        AudioFormat::opus_encoder_input_format(audio_format.get_sampling_rate())?;
-                }
-            }
-
-            let share_mode = AUDCLNT_SHAREMODE_SHARED;
-
-            let periodicity = 0; // Must be 0 when `AUDCLNT_SHAREMODE_SHARED`
-
-            let buffer_event = CreateEventA(None, false, false, None)?;
+            // Must be 0 when `AUDCLNT_SHAREMODE_SHARED`
+            let periodicity = 0;
 
             audio_client.Initialize(
                 share_mode,
                 stream_flags,
-                min_device_period,
+                buffer_duration,
                 periodicity,
                 audio_format.as_wave_format(),
                 None,
             )?;
+
+            let buffer_event = CreateEventA(None, false, false, None)?;
 
             audio_client.SetEventHandle(buffer_event)?;
 
@@ -226,20 +239,23 @@ impl BackgroundAudioCapturer {
                 audio_capture_client: audio_client.GetService()?,
                 buffer_event,
                 audio_format,
+                audio_format_type,
                 audio_client,
             })
         }
     }
 
-    fn create_audio_device(
+    /// Get an audio rendering device (i.e, headphones, speakers) from which the audio will be
+    /// duplicated from.
+    fn get_source_device(
         device_enumerator: &IMMDeviceEnumerator,
         device_id: &Arc<Mutex<Option<String>>>,
     ) -> Result<IMMDevice, windows::core::Error> {
         let mut mutex_guard = match device_id.lock() {
             Ok(g) => g,
-            Err(_) => {
-                tracing::error!("{}", POISONED_MUTEX_MSG);
-                panic!("{}", POISONED_MUTEX_MSG);
+            Err(e) => {
+                tracing::error!("{}", e);
+                panic!("{}", e);
             }
         };
         unsafe {
@@ -323,6 +339,7 @@ mod tests {
     #[test]
     fn test_audio_capture_init() {
         let mut audio_capture = AudioCapturer::new(None);
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
         let now = std::time::Instant::now();
         while now.elapsed() < std::time::Duration::from_millis(100) {

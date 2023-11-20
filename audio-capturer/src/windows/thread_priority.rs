@@ -1,6 +1,5 @@
-use std::mem::MaybeUninit;
 use windows::{
-    core::PCSTR,
+    core::{s, PCSTR},
     Win32::{
         Foundation::HANDLE,
         System::Threading::{AvRevertMmThreadCharacteristics, AvSetMmThreadCharacteristicsA},
@@ -21,15 +20,11 @@ impl Drop for ThreadPriority {
 impl ThreadPriority {
     pub fn new(thread_profile: ThreadProfile) -> Result<Self, windows::core::Error> {
         unsafe {
-            let mut task_index = MaybeUninit::uninit();
+            // Must be zero on initial call
+            let mut task_index = 0;
 
-            // Need to have a variable to hold the `&'static str` before using the pointer in
-            // `PCSTR::from_raw`. Not doing it this way causes `AvSetMmThreadCharacteristicsA` to
-            // hang.
-            let task_name = thread_profile.task_name_str();
-            let pcstr = PCSTR::from_raw(task_name.as_ptr());
-
-            let handle = AvSetMmThreadCharacteristicsA(pcstr, task_index.as_mut_ptr())?;
+            let handle =
+                AvSetMmThreadCharacteristicsA(thread_profile.task_name(), &mut task_index)?;
 
             Ok(Self(handle))
         }
@@ -50,17 +45,17 @@ pub enum ThreadProfile {
 }
 
 impl ThreadProfile {
-    fn task_name_str(&self) -> &'static str {
+    fn task_name(&self) -> PCSTR {
         match self {
-            ThreadProfile::Audio => "Audio\0",
-            ThreadProfile::Capture => "Capture\0",
+            ThreadProfile::Audio => s!("Audio"),
+            ThreadProfile::Capture => s!("Capture"),
             // DisplayPostProcessing has no space between the words
-            ThreadProfile::DisplayPostProcessing => "DisplayPostProcessing\0",
-            ThreadProfile::Distribution => "Distribution\0",
-            ThreadProfile::Games => "Games\0",
-            ThreadProfile::Playback => "Playback\0",
-            ThreadProfile::ProAudio => "Pro Audio\0",
-            ThreadProfile::WindowManager => "Window Manager\0",
+            ThreadProfile::DisplayPostProcessing => s!("DisplayPostProcessing"),
+            ThreadProfile::Distribution => s!("Distribution"),
+            ThreadProfile::Games => s!("Games"),
+            ThreadProfile::Playback => s!("Playback"),
+            ThreadProfile::ProAudio => s!("Pro Audio"),
+            ThreadProfile::WindowManager => s!("Window Manager"),
         }
     }
 }

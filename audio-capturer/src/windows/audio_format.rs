@@ -1,17 +1,26 @@
 use crate::AudioFormatType;
-use std::ptr::NonNull;
+use std::{mem::MaybeUninit, ptr::NonNull};
 use windows::Win32::{
+    Foundation::{S_FALSE, S_OK},
     Media::{
-        Audio::{IAudioClient, WAVEFORMATEX, WAVEFORMATEXTENSIBLE, WAVE_FORMAT_PCM},
+        Audio::{
+            IAudioClient, AUDCLNT_E_UNSUPPORTED_FORMAT, AUDCLNT_SHAREMODE, WAVEFORMATEX,
+            WAVEFORMATEXTENSIBLE, WAVE_FORMAT_PCM,
+        },
         KernelStreaming::{KSDATAFORMAT_SUBTYPE_PCM, WAVE_FORMAT_EXTENSIBLE},
         Multimedia::{KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, WAVE_FORMAT_IEEE_FLOAT},
     },
     System::Com::{CoTaskMemAlloc, CoTaskMemFree},
 };
 
+const OPUS_SAMPLING_RATES: [u32; 5] = [8000, 12000, 16000, 24000, 48000];
+const NUM_CHANNELS: u32 = 2;
+const OPUS_BITS_PER_SAMPLE: u32 = 16;
+
 pub struct AudioFormat {
     inner: NonNull<WAVEFORMATEX>,
     block_align: usize,
+    num_channels: usize,
 }
 
 impl Drop for AudioFormat {
@@ -30,10 +39,14 @@ impl AudioFormat {
                 .GetMixFormat()
                 .and_then(|ptr| match NonNull::new(ptr) {
                     Some(non_null) => {
-                        let block_align = non_null.as_ref().nBlockAlign as usize;
+                        let (block_align, channels) = {
+                            let r = non_null.as_ref();
+                            (r.nBlockAlign as usize, r.nChannels as usize)
+                        };
                         Ok(Self {
                             inner: non_null,
                             block_align,
+                            num_channels: channels,
                         })
                     }
                     None => Err(windows::core::Error::from_win32()),
@@ -41,12 +54,12 @@ impl AudioFormat {
         }
     }
 
-    /// Create an audio format that the Opus encoder can encode.
+    /// Create an audio format for 16-bit signed PCM that the Opus encoder can encode.
     pub fn opus_encoder_input_format(sampling_rate: u32) -> Result<Self, windows::core::Error> {
         const NUM_BITS_PER_BYTE: u32 = 8;
 
-        let channels: u32 = crate::NUM_CHANNELS;
-        let bits_per_sample: u32 = crate::OPUS_BITS_PER_SAMPLE;
+        let channels: u32 = NUM_CHANNELS;
+        let bits_per_sample: u32 = OPUS_BITS_PER_SAMPLE;
         let block_align = channels * bits_per_sample / NUM_BITS_PER_BYTE;
         let avg_bytes_per_sec = sampling_rate * block_align;
 
@@ -69,6 +82,7 @@ impl AudioFormat {
                     Ok(Self {
                         inner: non_null,
                         block_align: block_align as usize,
+                        num_channels: channels as usize,
                     })
                 }
                 None => Err(windows::core::Error::from_win32()),
@@ -76,15 +90,47 @@ impl AudioFormat {
         }
     }
 
+    pub fn is_supported_by_device(
+        &self,
+        audio_client: &IAudioClient,
+        share_mode: AUDCLNT_SHAREMODE,
+    ) -> Result<bool, windows::core::Error> {
+        unsafe {
+            let mut closest_match = MaybeUninit::uninit();
+            let hresult = audio_client.IsFormatSupported(
+                share_mode,
+                self.as_wave_format(),
+                Some(closest_match.as_mut_ptr()),
+            );
+
+            let closest_match = closest_match.assume_init();
+            if !closest_match.is_null() {
+                CoTaskMemFree(Some(closest_match.cast()));
+            }
+
+            match hresult {
+                S_OK => Ok(true),
+                S_FALSE => Ok(false),
+                e => {
+                    if e == AUDCLNT_E_UNSUPPORTED_FORMAT {
+                        Ok(false)
+                    } else {
+                        Err(windows::core::Error::from_win32())
+                    }
+                }
+            }
+        }
+    }
+
     fn get_format_tag(&self) -> u16 {
-        unsafe { (*self.inner.as_ptr()).wFormatTag }
+        unsafe { self.inner.as_ref().wFormatTag }
     }
 
     pub fn as_wave_format(&self) -> &WAVEFORMATEX {
         unsafe { self.inner.as_ref() }
     }
 
-    pub fn as_extensible_format(&self) -> Option<&WAVEFORMATEXTENSIBLE> {
+    fn as_extensible_format(&self) -> Option<&WAVEFORMATEXTENSIBLE> {
         unsafe {
             if self.get_format_tag() == WAVE_FORMAT_EXTENSIBLE as u16 {
                 Some(self.inner.cast().as_ref())
@@ -113,10 +159,24 @@ impl AudioFormat {
     }
 
     pub fn get_sampling_rate(&self) -> u32 {
-        unsafe { (*self.inner.as_ptr()).nSamplesPerSec }
+        unsafe { self.inner.as_ref().nSamplesPerSec }
+    }
+
+    pub fn is_sampling_rate_supported_by_encoder(&self) -> bool {
+        OPUS_SAMPLING_RATES.contains(&self.get_sampling_rate())
+    }
+
+    pub fn set_sampling_rate_to_supported(&mut self) {
+        unsafe {
+            self.inner.as_mut().nSamplesPerSec = 48000;
+        }
     }
 
     pub fn get_block_align(&self) -> usize {
         self.block_align
+    }
+
+    pub fn get_num_channels(&self) -> usize {
+        self.num_channels
     }
 }
