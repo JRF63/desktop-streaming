@@ -12,6 +12,7 @@ exclude = ["windows-reexport"]
 [workspace.dependencies]
 approx = "0.5.1"
 bitflags = "2.4.1"
+serde = "1.0.192"
 thiserror = "1.0.50"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"

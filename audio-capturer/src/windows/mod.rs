@@ -1,12 +1,15 @@
+mod audio_format;
 mod com_thread;
 mod thread_priority;
 
 use self::{
+    audio_format::AudioFormat,
     com_thread::ComThread,
     thread_priority::{ThreadPriority, ThreadProfile},
 };
-use crate::util::ExtendFromBytes;
+use crate::AudioFormatType;
 use conveyor_buffer::{ConveyorBufferReader, ConveyorBufferWriter};
+use serde::{Deserialize, Serialize};
 use std::{
     mem::MaybeUninit,
     sync::{
@@ -20,10 +23,10 @@ use windows::{
     Win32::{
         Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT},
         Media::Audio::{
-            eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
-            MMDeviceEnumerator, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
-            AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK,
-            AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY, WAVEFORMATEX, WAVE_FORMAT_PCM,
+            eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
+            MMDeviceEnumerator, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_SHAREMODE_SHARED,
+            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+            AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
         },
         System::{
             Com::{CoCreateInstance, CLSCTX, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED},
@@ -35,19 +38,21 @@ use windows::{
 const WAIT_INTERVAL_MS: u32 = 100;
 const NUM_BUFFERS: usize = 64;
 const APPROX_AUDIO_DATA_LEN: usize = 1920;
+const POISONED_MUTEX_MSG: &str = "Mutex was poisoned";
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AudioData {
-    data: Vec<i16>,
-    frames_available: u32,
-    flags: u32,
-    timestamp: u64,
+    pub data: Vec<i16>,
+    pub num_frames: u32,
+    pub flags: u32,
+    pub timestamp: u64,
 }
 
 impl AudioData {
     fn new() -> Self {
         Self {
             data: Vec::with_capacity(APPROX_AUDIO_DATA_LEN),
-            frames_available: 0,
+            num_frames: 0,
             flags: 0,
             timestamp: 0,
         }
@@ -80,7 +85,7 @@ impl AudioCapturer {
         Self {
             reader,
             running: running.clone(),
-            join_handle: Some(AudioCapturer::spawn_thread(
+            join_handle: Some(BackgroundAudioCapturer::spawn(
                 device_id.clone(),
                 writer,
                 running,
@@ -89,19 +94,27 @@ impl AudioCapturer {
         }
     }
 
-    pub fn recv_audio_data<F>(&mut self, mut read_op: F)
-    where
-        F: FnMut(&AudioData),
-    {
-        self.reader.read(|_, buffer| read_op(buffer))
+    pub fn get_audio_data(&mut self) -> impl std::ops::Deref<Target = AudioData> + '_ {
+        self.reader.get().1
     }
 
     pub fn get_device_id(&self) -> Option<String> {
-        let mutex_guard = self.device_id.lock().expect("Mutex was poisoned");
-        mutex_guard.clone()
+        self.device_id.lock().expect(POISONED_MUTEX_MSG).clone()
     }
+}
 
-    fn spawn_thread(
+struct BackgroundAudioCapturer {
+    audio_capture_client: IAudioCaptureClient,
+    buffer_event: HANDLE,
+    audio_format: AudioFormat,
+
+    // TODO: Useful for setting the volume
+    #[allow(dead_code)]
+    audio_client: IAudioClient,
+}
+
+impl BackgroundAudioCapturer {
+    fn spawn(
         device_id: Arc<Mutex<Option<String>>>,
         mut writer: ConveyorBufferWriter<AudioData, NUM_BUFFERS>,
         running: Arc<AtomicBool>,
@@ -121,75 +134,87 @@ impl AudioCapturer {
             let device_enumerator: IMMDeviceEnumerator =
                 unsafe { CoCreateInstance(&MMDeviceEnumerator, None, class_context)? };
 
-            let capture_client =
-                AudioCaptureClient::new(&device_enumerator, device_id, class_context)?;
-
             while running.load(Ordering::Acquire) {
-                capture_client.send_audio_data(&mut writer)?;
+                let capture_client = BackgroundAudioCapturer::new(
+                    &device_enumerator,
+                    device_id.clone(),
+                    class_context,
+                )?;
+
+                while running.load(Ordering::Acquire) {
+                    if let Err(e) = capture_client.send_audio_data(&mut writer) {
+                        // Handle a removed audio device by querying for the new default device
+                        if e.code() == AUDCLNT_E_DEVICE_INVALIDATED {
+                            *device_id.lock().expect(POISONED_MUTEX_MSG) = None;
+                            break;
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
             }
 
             Ok(())
         })
     }
-}
 
-struct AudioCaptureClient {
-    inner: IAudioCaptureClient,
-    buffer_event: HANDLE,
-    audio_format: WAVEFORMATEX,
-}
-
-impl AudioCaptureClient {
-    pub fn new(
+    fn new(
         device_enumerator: &IMMDeviceEnumerator,
         device_id: Arc<Mutex<Option<String>>>,
         class_context: CLSCTX,
     ) -> Result<Self, windows::core::Error> {
+        let device = BackgroundAudioCapturer::create_audio_device(device_enumerator, &device_id)?;
         unsafe {
-            let device = {
-                let mut mutex_guard = device_id.lock().expect("Mutex was poisoned");
-                match mutex_guard.as_deref() {
-                    Some(device_id) => device_enumerator.GetDevice(&HSTRING::from(device_id))?,
-                    None => {
-                        let dataflow = eRender;
-                        let role = eConsole;
-                        let device = device_enumerator.GetDefaultAudioEndpoint(dataflow, role)?;
+            let audio_client: IAudioClient = device.Activate(class_context, None)?;
 
-                        // `ToString::to_string` works too
-                        *mutex_guard = Some(device.GetId()?.to_hstring()?.to_string_lossy());
+            let min_device_period = {
+                let mut default_device_period = MaybeUninit::uninit(); // Not going to be used
+                let mut min_device_period = MaybeUninit::uninit();
 
-                        device
-                    }
-                }
+                audio_client.GetDevicePeriod(
+                    Some(default_device_period.as_mut_ptr()),
+                    Some(min_device_period.as_mut_ptr()),
+                )?;
+                min_device_period.assume_init()
             };
 
-            let audio_client: IAudioClient = device.Activate(class_context, None)?;
-            let buffer_event = CreateEventA(None, false, false, None)?;
-            let audio_format = opus_pcm_input_format();
+            let mut stream_flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
 
-            let mut default_device_period = MaybeUninit::uninit(); // Not going to be used
-            let mut min_device_period = MaybeUninit::uninit();
-
-            audio_client.GetDevicePeriod(
-                Some(default_device_period.as_mut_ptr()),
-                Some(min_device_period.as_mut_ptr()),
-            )?;
-
-            let min_device_period = min_device_period.assume_init();
-            let periodicity = 0; // Must be 0 when `AUDCLNT_SHAREMODE_SHARED`
+            let mut audio_format = AudioFormat::get_mix_format(&audio_client)?;
+            // match audio_format.audio_format_type() {
+            //     AudioFormatType::Pcm => todo!(),
+            //     AudioFormatType::IeeeFloat => todo!(),
+            //     AudioFormatType::Opus => todo!(),
+            //     AudioFormatType::Other => {
+            //         stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+            //             | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+            //         audio_format =
+            //             AudioFormat::opus_encoder_input_format(audio_format.get_bitrate())?;
+            //     }
+            // }
+            match audio_format.audio_format_type() {
+                Some(AudioFormatType::Pcm) => todo!(),
+                Some(AudioFormatType::IeeeFloat) => todo!(),
+                None => {
+                    stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+                        | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+                    audio_format =
+                        AudioFormat::opus_encoder_input_format(audio_format.get_sampling_rate())?;
+                }
+            }
 
             let share_mode = AUDCLNT_SHAREMODE_SHARED;
-            let stream_flags = AUDCLNT_STREAMFLAGS_LOOPBACK
-                | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-                | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
-                | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+
+            let periodicity = 0; // Must be 0 when `AUDCLNT_SHAREMODE_SHARED`
+
+            let buffer_event = CreateEventA(None, false, false, None)?;
 
             audio_client.Initialize(
                 share_mode,
                 stream_flags,
                 min_device_period,
                 periodicity,
-                &audio_format,
+                audio_format.as_wave_format(),
                 None,
             )?;
 
@@ -198,10 +223,41 @@ impl AudioCaptureClient {
             audio_client.Start()?;
 
             Ok(Self {
-                inner: audio_client.GetService()?,
+                audio_capture_client: audio_client.GetService()?,
                 buffer_event,
                 audio_format,
+                audio_client,
             })
+        }
+    }
+
+    fn create_audio_device(
+        device_enumerator: &IMMDeviceEnumerator,
+        device_id: &Arc<Mutex<Option<String>>>,
+    ) -> Result<IMMDevice, windows::core::Error> {
+        let mut mutex_guard = match device_id.lock() {
+            Ok(g) => g,
+            Err(_) => {
+                tracing::error!("{}", POISONED_MUTEX_MSG);
+                panic!("{}", POISONED_MUTEX_MSG);
+            }
+        };
+        unsafe {
+            match mutex_guard.as_deref() {
+                Some(device_id) => Ok(device_enumerator.GetDevice(&HSTRING::from(device_id))?),
+                None => {
+                    let dataflow = eRender;
+                    let role = eConsole;
+                    let device = device_enumerator.GetDefaultAudioEndpoint(dataflow, role)?;
+
+                    *mutex_guard = match device.GetId()?.to_string() {
+                        Ok(s) => Some(s),
+                        Err(_) => None, // Unlikely error
+                    };
+
+                    Ok(device)
+                }
+            }
         }
     }
 
@@ -212,15 +268,14 @@ impl AudioCaptureClient {
         unsafe {
             match WaitForSingleObject(self.buffer_event, WAIT_INTERVAL_MS) {
                 WAIT_OBJECT_0 => {
-                    let mut frames_available = self.inner.GetNextPacketSize()?;
-                    let block_align = self.audio_format.nBlockAlign as usize;
-                    let data_size = block_align * frames_available as usize;
+                    let mut frames_available = self.audio_capture_client.GetNextPacketSize()?;
+                    let num_bytes = self.audio_format.get_block_align() * frames_available as usize;
 
                     let mut data = MaybeUninit::uninit();
                     let mut flags = MaybeUninit::uninit();
                     let mut qpc_position = MaybeUninit::uninit();
 
-                    self.inner.GetBuffer(
+                    self.audio_capture_client.GetBuffer(
                         data.as_mut_ptr(),
                         &mut frames_available,
                         flags.as_mut_ptr(),
@@ -229,47 +284,35 @@ impl AudioCaptureClient {
                     )?;
 
                     writer.write(|_, audio_data| {
-                        let bytes = std::slice::from_raw_parts(data.assume_init(), data_size);
-                        let (prefix, mid, suffix) = bytes.align_to::<i16>();
+                        // The `u8` array is half the size when converted to an `i16` array
+                        let pcm_data_len = num_bytes / 2;
 
                         audio_data.data.clear();
-                        audio_data.data.extend_from_bytes(prefix);
-                        audio_data.data.extend_from_slice(mid);
-                        audio_data.data.extend_from_bytes(suffix);
+                        audio_data.data.reserve(pcm_data_len);
 
-                        audio_data.frames_available = frames_available;
+                        // This should be safe since an `i16` array is also aligned to a `u8`
+                        // array
+                        std::ptr::copy_nonoverlapping(
+                            data.assume_init(),
+                            audio_data.data.as_mut_ptr().cast(),
+                            num_bytes,
+                        );
+
+                        audio_data.data.set_len(pcm_data_len);
+
+                        audio_data.num_frames = frames_available;
                         audio_data.flags = flags.assume_init();
                         audio_data.timestamp = qpc_position.assume_init();
                     });
 
                     // Must call `ReleaseBuffer` for every successful `GetBuffer`
-                    self.inner.ReleaseBuffer(frames_available)?;
+                    self.audio_capture_client.ReleaseBuffer(frames_available)?;
                 }
-                WAIT_TIMEOUT => (),
+                WAIT_TIMEOUT => (), // For periodically checking if processing should stop
                 _ => return Err(windows::core::Error::from_win32()), // Last error
             }
         }
         Ok(())
-    }
-}
-
-fn opus_pcm_input_format() -> WAVEFORMATEX {
-    const NUM_BITS_PER_BYTE: u32 = 8;
-
-    let channels: u32 = crate::NUM_CHANNELS;
-    let samples_per_sec: u32 = crate::OPUS_BITRATE;
-    let bits_per_sample: u32 = crate::OPUS_BITS_PER_SAMPLE;
-    let block_align = channels * bits_per_sample / NUM_BITS_PER_BYTE;
-    let avg_bytes_per_sec = samples_per_sec * block_align;
-
-    WAVEFORMATEX {
-        wFormatTag: WAVE_FORMAT_PCM as u16,
-        nChannels: channels as u16,
-        nSamplesPerSec: samples_per_sec,
-        nAvgBytesPerSec: avg_bytes_per_sec,
-        nBlockAlign: block_align as u16,
-        wBitsPerSample: bits_per_sample as u16,
-        cbSize: 0,
     }
 }
 
@@ -282,10 +325,9 @@ mod tests {
         let mut audio_capture = AudioCapturer::new(None);
 
         let now = std::time::Instant::now();
-        while now.elapsed() < std::time::Duration::from_secs(3) {
-            audio_capture.recv_audio_data(|audio_data| {
-                println!("flags: {} qpc: {}", audio_data.flags, audio_data.timestamp);
-            })
+        while now.elapsed() < std::time::Duration::from_millis(100) {
+            let audio_data = audio_capture.get_audio_data();
+            println!("flags: {} qpc: {}", audio_data.flags, audio_data.timestamp);
         }
     }
 }

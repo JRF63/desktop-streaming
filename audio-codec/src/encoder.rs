@@ -78,17 +78,12 @@ impl AudioEncoder {
         }
     }
 
-    pub fn encode(
-        &mut self,
-        pcm: &[i16],
-        frame_size: i32,
-        data: &mut [u8],
-    ) -> Result<i32, Error> {
+    pub fn encode(&mut self, pcm: &[i16], num_frames: i32, data: &mut [u8]) -> Result<i32, Error> {
         unsafe {
             let ret = sys::opus_encode(
                 self.encoder.as_ptr(),
                 pcm.as_ptr(),
-                frame_size,
+                num_frames,
                 data.as_mut_ptr(),
                 data.len() as i32,
             );

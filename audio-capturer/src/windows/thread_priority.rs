@@ -7,6 +7,7 @@ use windows::{
     },
 };
 
+#[repr(transparent)]
 pub struct ThreadPriority(HANDLE);
 
 impl Drop for ThreadPriority {

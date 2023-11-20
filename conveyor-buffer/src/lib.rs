@@ -46,7 +46,7 @@ pub struct ConveyorBufferWriter<T, const N: usize>(Arc<ConveyorBuffer<T, N>>);
 unsafe impl<T, const N: usize> Send for ConveyorBufferWriter<T, N> where T: Send {}
 
 impl<T, const N: usize> ConveyorBufferWriter<T, N> {
-    /// Returns the next item to be written to.
+    /// Returns the next item to be written to and its index in the internal buffer.
     pub fn get<'a>(&'a mut self) -> (usize, ConveyorBufferWriterItem<'a, T, N>) {
         // Needs to synchronize-with the `store` on ConveyorBufferWriterItem::drop since this
         // might be moved to another thread
@@ -130,7 +130,7 @@ pub struct ConveyorBufferReader<T, const N: usize>(Arc<ConveyorBuffer<T, N>>);
 unsafe impl<T, const N: usize> Send for ConveyorBufferReader<T, N> where T: Send {}
 
 impl<T, const N: usize> ConveyorBufferReader<T, N> {
-    /// Returns the next item to be read from.
+    /// Returns the next item to be read from and its index in the internal buffer.
     pub fn get<'a>(&'a mut self) -> (usize, ConveyorBufferReaderItem<'a, T, N>) {
         // Needs to synchronize-with the `store` on ConveyorBufferReaderItem::drop since this
         // might be moved to another thread
