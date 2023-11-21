@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace]
 resolver = "2"
-members = ["audio-capturer", "audio-codec", "conveyor-buffer", "input-injection"]
+members = ["audio-capturer", "audio-codec", "conveyor-buffer", "input-injection", "windows-util"]
 exclude = ["windows-reexport"]
 
 [workspace.dependencies]
