@@ -1,4 +1,4 @@
-use crate::AudioFormatType;
+use crate::audio_data::AudioFormatType;
 use std::{mem::MaybeUninit, ptr::NonNull};
 use windows::Win32::{
     Foundation::{S_FALSE, S_OK},
@@ -19,8 +19,7 @@ const OPUS_BITS_PER_SAMPLE: u32 = 16;
 
 pub struct AudioFormat {
     inner: NonNull<WAVEFORMATEX>,
-    block_align: usize,
-    num_channels: usize,
+    num_channels: u16,
 }
 
 impl Drop for AudioFormat {
@@ -38,17 +37,10 @@ impl AudioFormat {
             audio_client
                 .GetMixFormat()
                 .and_then(|ptr| match NonNull::new(ptr) {
-                    Some(non_null) => {
-                        let (block_align, channels) = {
-                            let r = non_null.as_ref();
-                            (r.nBlockAlign as usize, r.nChannels as usize)
-                        };
-                        Ok(Self {
-                            inner: non_null,
-                            block_align,
-                            num_channels: channels,
-                        })
-                    }
+                    Some(non_null) => Ok(Self {
+                        inner: non_null,
+                        num_channels: non_null.as_ref().nChannels,
+                    }),
                     None => Err(windows::core::Error::from_win32()),
                 })
         }
@@ -81,8 +73,7 @@ impl AudioFormat {
 
                     Ok(Self {
                         inner: non_null,
-                        block_align: block_align as usize,
-                        num_channels: channels as usize,
+                        num_channels: channels as u16,
                     })
                 }
                 None => Err(windows::core::Error::from_win32()),
@@ -122,7 +113,7 @@ impl AudioFormat {
         }
     }
 
-    fn get_format_tag(&self) -> u16 {
+    fn format_tag(&self) -> u16 {
         unsafe { self.inner.as_ref().wFormatTag }
     }
 
@@ -132,7 +123,7 @@ impl AudioFormat {
 
     fn as_extensible_format(&self) -> Option<&WAVEFORMATEXTENSIBLE> {
         unsafe {
-            if self.get_format_tag() == WAVE_FORMAT_EXTENSIBLE as u16 {
+            if self.format_tag() == WAVE_FORMAT_EXTENSIBLE as u16 {
                 Some(self.inner.cast().as_ref())
             } else {
                 None
@@ -150,7 +141,7 @@ impl AudioFormat {
                     _ => None,
                 }
             },
-            None => match self.get_format_tag() as u32 {
+            None => match self.format_tag() as u32 {
                 WAVE_FORMAT_PCM => Some(AudioFormatType::Pcm),
                 WAVE_FORMAT_IEEE_FLOAT => Some(AudioFormatType::IeeeFloat),
                 _ => None,
@@ -158,12 +149,12 @@ impl AudioFormat {
         }
     }
 
-    pub fn get_sampling_rate(&self) -> u32 {
+    pub fn sampling_rate(&self) -> u32 {
         unsafe { self.inner.as_ref().nSamplesPerSec }
     }
 
     pub fn is_sampling_rate_supported_by_encoder(&self) -> bool {
-        OPUS_SAMPLING_RATES.contains(&self.get_sampling_rate())
+        OPUS_SAMPLING_RATES.contains(&self.sampling_rate())
     }
 
     pub fn set_sampling_rate_to_supported(&mut self) {
@@ -172,11 +163,7 @@ impl AudioFormat {
         }
     }
 
-    pub fn get_block_align(&self) -> usize {
-        self.block_align
-    }
-
-    pub fn get_num_channels(&self) -> usize {
+    pub fn num_channels(&self) -> u16 {
         self.num_channels
     }
 }
