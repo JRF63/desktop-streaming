@@ -12,7 +12,7 @@ then use the browser to go to the PC's IP address at port 9090.
 
 ## Performance
 
-![latency](https://github.com/JRF63/desktop-streaming/raw/dev/.github/latency.png)
+![latency](.github/latency.png?raw=true)
 
 Achievable latency is around 50 ms. The breakdown being:
 - ~16 ms inside the encoder
