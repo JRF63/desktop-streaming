@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = ["has_audio_output_device"]
+has_audio_output_device = []
+
 [dependencies]
 thiserror = { workspace = true }
 tracing = { workspace = true }

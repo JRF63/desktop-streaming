@@ -14,12 +14,11 @@ use windows::Win32::{
 };
 
 const OPUS_SAMPLING_RATES: [u32; 5] = [8000, 12000, 16000, 24000, 48000];
-const OPUS_MAX_AUDIO_CHANNELS: u32 = 2;
+const OPUS_MAX_AUDIO_CHANNELS: u16 = 2;
 const OPUS_BITS_PER_SAMPLE: u32 = 16;
 
 pub struct AudioFormat {
     inner: NonNull<WAVEFORMATEX>,
-    num_channels: u16,
 }
 
 impl Drop for AudioFormat {
@@ -37,10 +36,7 @@ impl AudioFormat {
             audio_client
                 .GetMixFormat()
                 .and_then(|ptr| match NonNull::new(ptr) {
-                    Some(non_null) => Ok(Self {
-                        inner: non_null,
-                        num_channels: non_null.as_ref().nChannels,
-                    }),
+                    Some(non_null) => Ok(Self { inner: non_null }),
                     None => Err(windows::core::Error::from_win32()),
                 })
         }
@@ -50,9 +46,9 @@ impl AudioFormat {
     pub fn opus_encoder_input_format(sampling_rate: u32) -> Result<Self, windows::core::Error> {
         const NUM_BITS_PER_BYTE: u32 = 8;
 
-        let channels: u32 = OPUS_MAX_AUDIO_CHANNELS;
+        let channels = OPUS_MAX_AUDIO_CHANNELS;
         let bits_per_sample: u32 = OPUS_BITS_PER_SAMPLE;
-        let block_align = channels * bits_per_sample / NUM_BITS_PER_BYTE;
+        let block_align = channels as u32 * bits_per_sample / NUM_BITS_PER_BYTE;
         let avg_bytes_per_sec = sampling_rate * block_align;
 
         unsafe {
@@ -71,10 +67,7 @@ impl AudioFormat {
                         cbSize: 0,
                     };
 
-                    Ok(Self {
-                        inner: non_null,
-                        num_channels: channels as u16,
-                    })
+                    Ok(Self { inner: non_null })
                 }
                 None => Err(windows::core::Error::from_win32()),
             }
@@ -157,13 +150,27 @@ impl AudioFormat {
         OPUS_SAMPLING_RATES.contains(&self.sampling_rate())
     }
 
-    pub fn set_sampling_rate_to_supported(&mut self) {
-        unsafe {
-            self.inner.as_mut().nSamplesPerSec = 48000;
+    /// Set the sampling rate to one supported by the Opus encoder. Does nothing if the current
+    /// sampling rate is already supported.
+    pub fn fix_sampling_rate_if_unsupported(&mut self) {
+        if !self.is_sampling_rate_supported_by_encoder() {
+            unsafe {
+                self.inner.as_mut().nSamplesPerSec = 48000;
+            }
         }
     }
 
     pub fn num_channels(&self) -> u16 {
-        self.num_channels
+        unsafe { self.inner.as_ref().nChannels }
+    }
+
+    /// If the current number of audio channels exceeds the max supported by the Opus encoder, set
+    /// it to the max supported instead.
+    pub fn fix_num_audio_channels_if_unsupported(&mut self) {
+        if self.num_channels() > OPUS_MAX_AUDIO_CHANNELS {
+            unsafe {
+                self.inner.as_mut().nChannels = OPUS_MAX_AUDIO_CHANNELS;
+            }
+        }
     }
 }

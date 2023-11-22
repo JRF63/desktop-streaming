@@ -12,9 +12,10 @@ use windows::{
         Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT},
         Media::Audio::{
             eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
-            MMDeviceEnumerator, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_SHAREMODE_SHARED,
-            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-            AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+            MMDeviceEnumerator, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_SHAREMODE,
+            AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK,
+            AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
         },
         System::{
             Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
@@ -53,46 +54,14 @@ impl AudioDuplicatorImpl {
             let share_mode = AUDCLNT_SHAREMODE_SHARED;
             let mut stream_flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
 
-            let mut audio_format = AudioFormat::get_mix_format(&audio_client)?;
+            let (audio_format, additional_flags) =
+                AudioDuplicatorImpl::get_supported_audio_format(&audio_client, share_mode)?;
+            stream_flags |= additional_flags;
 
-            let audio_format_kind = match audio_format.audio_format_kind() {
-                Some(t) => {
-                    let mut audio_format_kind = t;
+            // This `unwrap` should not fail
+            let audio_format_kind = audio_format.audio_format_kind().unwrap();
 
-                    if !audio_format.is_sampling_rate_supported_by_encoder() {
-                        audio_format.set_sampling_rate_to_supported();
-                        if !audio_format.is_supported_by_device(&audio_client, share_mode)? {
-                            stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-                                | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-                            audio_format = AudioFormat::opus_encoder_input_format(
-                                audio_format.sampling_rate(),
-                            )?;
-                            audio_format_kind = AudioFormatKind::Pcm;
-                        }
-                    }
-                    audio_format_kind
-                }
-                None => {
-                    // Format is unsupported by the encoder so auto-convert it to a high-quality
-                    // PCM stream.
-                    stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-                        | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
-                    audio_format =
-                        AudioFormat::opus_encoder_input_format(audio_format.sampling_rate())?;
-                    AudioFormatKind::Pcm
-                }
-            };
-
-            let buffer_duration = {
-                let mut default_device_period = MaybeUninit::uninit(); // Not going to be used
-                let mut min_device_period = MaybeUninit::uninit();
-
-                audio_client.GetDevicePeriod(
-                    Some(default_device_period.as_mut_ptr()),
-                    Some(min_device_period.as_mut_ptr()),
-                )?;
-                min_device_period.assume_init()
-            };
+            let buffer_duration = AudioDuplicatorImpl::get_minimum_buffer_duration(&audio_client)?;
 
             // Must be 0 when `AUDCLNT_SHAREMODE_SHARED`
             let periodicity = 0;
@@ -144,6 +113,44 @@ impl AudioDuplicatorImpl {
 
             Ok((device, device_id))
         }
+    }
+
+    fn get_minimum_buffer_duration(
+        audio_client: &IAudioClient,
+    ) -> Result<i64, windows::core::Error> {
+        let mut default_device_period = MaybeUninit::uninit(); // Not going to be used
+        let mut min_device_period = MaybeUninit::uninit();
+
+        unsafe {
+            audio_client.GetDevicePeriod(
+                Some(default_device_period.as_mut_ptr()),
+                Some(min_device_period.as_mut_ptr()),
+            )?;
+            Ok(min_device_period.assume_init())
+        }
+    }
+
+    fn get_supported_audio_format(
+        audio_client: &IAudioClient,
+        share_mode: AUDCLNT_SHAREMODE,
+    ) -> Result<(AudioFormat, u32), windows::core::Error> {
+        let mut mix_audio_format = AudioFormat::get_mix_format(&audio_client)?;
+
+        if mix_audio_format.audio_format_kind().is_some() {
+            mix_audio_format.fix_sampling_rate_if_unsupported();
+            mix_audio_format.fix_num_audio_channels_if_unsupported();
+
+            if mix_audio_format.is_supported_by_device(&audio_client, share_mode)? {
+                return Ok((mix_audio_format, 0));
+            }
+        }
+
+        // Mix format is unsupported by the encoder so auto-convert it to a high-quality PCM stream
+        let additional_flags =
+            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+        let opus_encoder_input_format =
+            AudioFormat::opus_encoder_input_format(mix_audio_format.sampling_rate())?;
+        Ok((opus_encoder_input_format, additional_flags))
     }
 
     pub fn get_audio_data<'a>(

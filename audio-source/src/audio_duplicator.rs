@@ -49,6 +49,7 @@ mod tests {
         time::{Duration, Instant},
     };
 
+    #[cfg(feature = "has_audio_output_device")]
     #[test]
     fn test_audio_duplicator_get_audio_data() {
         const WAIT_MILLIS: u32 = 100;
