@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

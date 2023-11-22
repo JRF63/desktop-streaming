@@ -1,12 +1,21 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     let header = "opus/include/opus.h";
+
+    if !Path::new(header).exists() {
+        panic!(
+            "`opus.h` could not be found.\n\n\
+            Try the command `git submodule update --init --recursive`."
+        )
+    }
+
     let bindings = bindgen::Builder::default()
         .header(header)
         .layout_tests(false)
-        // .derive_debug(true)
-        // .derive_copy(false)
         .generate_comments(false)
         .default_macro_constant_type(bindgen::MacroTypeVariation::Signed)
         .generate()

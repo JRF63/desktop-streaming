@@ -1,4 +1,4 @@
-use crate::audio_data::AudioFormatType;
+use crate::audio_data::AudioFormatKind;
 use std::{mem::MaybeUninit, ptr::NonNull};
 use windows::Win32::{
     Foundation::{S_FALSE, S_OK},
@@ -14,7 +14,7 @@ use windows::Win32::{
 };
 
 const OPUS_SAMPLING_RATES: [u32; 5] = [8000, 12000, 16000, 24000, 48000];
-const NUM_CHANNELS: u32 = 2;
+const OPUS_MAX_AUDIO_CHANNELS: u32 = 2;
 const OPUS_BITS_PER_SAMPLE: u32 = 16;
 
 pub struct AudioFormat {
@@ -50,7 +50,7 @@ impl AudioFormat {
     pub fn opus_encoder_input_format(sampling_rate: u32) -> Result<Self, windows::core::Error> {
         const NUM_BITS_PER_BYTE: u32 = 8;
 
-        let channels: u32 = NUM_CHANNELS;
+        let channels: u32 = OPUS_MAX_AUDIO_CHANNELS;
         let bits_per_sample: u32 = OPUS_BITS_PER_SAMPLE;
         let block_align = channels * bits_per_sample / NUM_BITS_PER_BYTE;
         let avg_bytes_per_sec = sampling_rate * block_align;
@@ -131,19 +131,19 @@ impl AudioFormat {
         }
     }
 
-    pub fn audio_format_type(&self) -> Option<AudioFormatType> {
+    pub fn audio_format_kind(&self) -> Option<AudioFormatKind> {
         match self.as_extensible_format() {
             Some(ext_format) => unsafe {
                 let sub_format_ptr = std::ptr::addr_of!(ext_format.SubFormat);
                 match std::ptr::read_unaligned(sub_format_ptr) {
-                    KSDATAFORMAT_SUBTYPE_PCM => Some(AudioFormatType::Pcm),
-                    KSDATAFORMAT_SUBTYPE_IEEE_FLOAT => Some(AudioFormatType::IeeeFloat),
+                    KSDATAFORMAT_SUBTYPE_PCM => Some(AudioFormatKind::Pcm),
+                    KSDATAFORMAT_SUBTYPE_IEEE_FLOAT => Some(AudioFormatKind::IeeeFloat),
                     _ => None,
                 }
             },
             None => match self.format_tag() as u32 {
-                WAVE_FORMAT_PCM => Some(AudioFormatType::Pcm),
-                WAVE_FORMAT_IEEE_FLOAT => Some(AudioFormatType::IeeeFloat),
+                WAVE_FORMAT_PCM => Some(AudioFormatKind::Pcm),
+                WAVE_FORMAT_IEEE_FLOAT => Some(AudioFormatKind::IeeeFloat),
                 _ => None,
             },
         }

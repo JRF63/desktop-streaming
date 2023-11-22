@@ -1,7 +1,10 @@
 mod audio_format;
 
 use self::audio_format::AudioFormat;
-use crate::audio_data::{AudioData, AudioDataDrop, AudioFormatType};
+use crate::{
+    audio_data::{AudioData, AudioDataDrop, AudioDataWrapper, AudioFormatKind},
+    error::AudioSourceError,
+};
 use std::{mem::MaybeUninit, ptr::NonNull};
 use windows::{
     core::HSTRING,
@@ -24,12 +27,12 @@ pub struct AudioDuplicatorImpl {
     audio_capture_client: IAudioCaptureClient,
     buffer_event: HANDLE,
     audio_format: AudioFormat,
-    audio_format_type: AudioFormatType,
+    audio_format_kind: AudioFormatKind,
     device_id: String,
 }
 
 impl AudioDuplicatorImpl {
-    pub fn new(device_id: Option<String>) -> Result<Self, windows::core::Error> {
+    pub fn new(device_id: Option<String>) -> Result<Self, AudioSourceError> {
         unsafe {
             // COM usage is in the same process
             let class_context = CLSCTX_INPROC_SERVER;
@@ -52,9 +55,9 @@ impl AudioDuplicatorImpl {
 
             let mut audio_format = AudioFormat::get_mix_format(&audio_client)?;
 
-            let audio_format_type = match audio_format.audio_format_type() {
+            let audio_format_kind = match audio_format.audio_format_kind() {
                 Some(t) => {
-                    let mut audio_format_type = t;
+                    let mut audio_format_kind = t;
 
                     if !audio_format.is_sampling_rate_supported_by_encoder() {
                         audio_format.set_sampling_rate_to_supported();
@@ -64,10 +67,10 @@ impl AudioDuplicatorImpl {
                             audio_format = AudioFormat::opus_encoder_input_format(
                                 audio_format.sampling_rate(),
                             )?;
-                            audio_format_type = AudioFormatType::Pcm;
+                            audio_format_kind = AudioFormatKind::Pcm;
                         }
                     }
-                    audio_format_type
+                    audio_format_kind
                 }
                 None => {
                     // Format is unsupported by the encoder so auto-convert it to a high-quality
@@ -76,7 +79,7 @@ impl AudioDuplicatorImpl {
                         | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
                     audio_format =
                         AudioFormat::opus_encoder_input_format(audio_format.sampling_rate())?;
-                    AudioFormatType::Pcm
+                    AudioFormatKind::Pcm
                 }
             };
 
@@ -113,7 +116,7 @@ impl AudioDuplicatorImpl {
                 audio_capture_client: audio_client.GetService()?,
                 buffer_event,
                 audio_format,
-                audio_format_type,
+                audio_format_kind,
                 device_id,
             })
         }
@@ -143,15 +146,10 @@ impl AudioDuplicatorImpl {
         }
     }
 
-    /// Get the next packet of audio data.
-    ///
-    /// The audio data can either be 16-bit signed PCM or 32-bit IEEE float depending on the
-    /// return value of `audio_format_type`. This function returns `Ok(None)` if the time specified
-    /// in `wait_millis` elapses before the next audio data is ready.
     pub fn get_audio_data<'a>(
         &'a self,
         wait_millis: u32,
-    ) -> Result<Option<AudioDataWrapper<'a>>, windows::core::Error> {
+    ) -> Result<AudioDataWrapper<'a, AudioDuplicatorImpl>, AudioSourceError> {
         unsafe {
             match WaitForSingleObject(self.buffer_event, wait_millis) {
                 WAIT_OBJECT_0 => {
@@ -178,13 +176,10 @@ impl AudioDuplicatorImpl {
                         timestamp.assume_init(),
                     );
 
-                    Ok(Some(AudioDataWrapper {
-                        inner: audio_data,
-                        parent: self,
-                    }))
+                    Ok(AudioDataWrapper::new(audio_data, self))
                 }
-                WAIT_TIMEOUT => Ok(None),
-                _ => return Err(windows::core::Error::from_win32()), // Last error
+                WAIT_TIMEOUT => Err(AudioSourceError::WaitTimeout),
+                _ => return Err(windows::core::Error::from_win32().into()), // Last error
             }
         }
     }
@@ -197,8 +192,8 @@ impl AudioDuplicatorImpl {
         &self.device_id
     }
 
-    pub fn audio_format_type(&self) -> AudioFormatType {
-        self.audio_format_type
+    pub fn audio_format_kind(&self) -> AudioFormatKind {
+        self.audio_format_kind
     }
 }
 
@@ -218,23 +213,15 @@ impl AudioDataDrop for AudioDuplicatorImpl {
     }
 }
 
-/// RAII wrapper for automatically freeing the buffer returned by `get_audio_data`.
-pub struct AudioDataWrapper<'a> {
-    inner: AudioData<'a>,
-    parent: &'a AudioDuplicatorImpl,
-}
+impl From<windows::core::Error> for AudioSourceError {
+    fn from(value: windows::core::Error) -> Self {
+        tracing::error!("{}", value);
 
-impl<'a> Drop for AudioDataWrapper<'a> {
-    fn drop(&mut self) {
-        self.parent.drop_audio_data(&self.inner);
-    }
-}
-
-impl<'a> std::ops::Deref for AudioDataWrapper<'a> {
-    type Target = AudioData<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+        if value.code() == AUDCLNT_E_DEVICE_INVALIDATED {
+            AudioSourceError::DeviceInvalidated
+        } else {
+            AudioSourceError::InternalError
+        }
     }
 }
 
