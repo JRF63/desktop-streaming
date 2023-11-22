@@ -39,3 +39,33 @@ impl AudioDuplicator {
         (self.0.num_channels(), self.0.audio_format_kind())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rodio::{source::SineWave, OutputStream};
+    use std::{
+        ops::Deref,
+        time::{Duration, Instant},
+    };
+
+    #[test]
+    fn test_audio_duplicator_get_audio_data() {
+        const WAIT_MILLIS: u32 = 100;
+        const FREQ: f32 = 600.0;
+        const TEST_DUR_SECS: u64 = 1;
+
+        let sine_wave = SineWave::new(FREQ);
+        let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+        stream_handle.play_raw(sine_wave).unwrap();
+
+        // Duplicate from the default rendering device with `None`
+        let audio_duplicator = AudioDuplicator::new(None).unwrap();
+
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(TEST_DUR_SECS) {
+            let audio_data = audio_duplicator.get_audio_data(WAIT_MILLIS).unwrap();
+            dbg!(audio_data.deref());
+        }
+    }
+}

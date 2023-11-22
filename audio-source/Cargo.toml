@@ -21,3 +21,6 @@ windows = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_System_Variant",
 ] }
+
+[dev-dependencies]
+rodio = "0.17.3"

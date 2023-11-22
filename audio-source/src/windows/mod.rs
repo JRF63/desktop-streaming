@@ -224,13 +224,3 @@ impl From<windows::core::Error> for AudioSourceError {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_audio_capture_init() {
-        AudioDuplicatorImpl::new(None).unwrap();
-    }
-}
