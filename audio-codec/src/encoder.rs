@@ -171,6 +171,7 @@ mod tests {
             ApplicationMode::LowDelay,
         )
         .unwrap();
+    
         audio_encoder
             .set_bitrate(Bitrate::new(256000).unwrap())
             .unwrap();

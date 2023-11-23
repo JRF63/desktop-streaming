@@ -11,3 +11,6 @@ thiserror = { workspace = true }
 [build-dependencies]
 cmake = "0.1.50"
 bindgen = "0.68.1"
+
+[dev-dependencies]
+rodio = { workspace = true }

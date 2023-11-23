@@ -47,7 +47,7 @@ unsafe impl<T, const N: usize> Send for ConveyorBufferWriter<T, N> where T: Send
 
 impl<T, const N: usize> ConveyorBufferWriter<T, N> {
     /// Returns the next item to be written to and its index in the internal buffer.
-    pub fn get<'a>(&'a mut self) -> (usize, ConveyorBufferWriterItem<'a, T, N>) {
+    pub fn get(&mut self) -> (usize, ConveyorBufferWriterItem<'_, T, N>) {
         // Needs to synchronize-with the `store` on ConveyorBufferWriterItem::drop since this
         // might be moved to another thread
         let head = self.0.head.load(Ordering::Acquire);
@@ -131,7 +131,7 @@ unsafe impl<T, const N: usize> Send for ConveyorBufferReader<T, N> where T: Send
 
 impl<T, const N: usize> ConveyorBufferReader<T, N> {
     /// Returns the next item to be read from and its index in the internal buffer.
-    pub fn get<'a>(&'a mut self) -> (usize, ConveyorBufferReaderItem<'a, T, N>) {
+    pub fn get(&mut self) -> (usize, ConveyorBufferReaderItem<'_, T, N>) {
         // Needs to synchronize-with the `store` on ConveyorBufferReaderItem::drop since this
         // might be moved to another thread
         let tail = self.0.tail.load(Ordering::Acquire);

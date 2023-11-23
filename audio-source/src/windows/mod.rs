@@ -103,9 +103,7 @@ impl AudioDuplicatorImpl {
                 None => {
                     let dataflow = eRender;
                     let role = eConsole;
-                    let device = device_enumerator.GetDefaultAudioEndpoint(dataflow, role)?;
-
-                    device
+                    device_enumerator.GetDefaultAudioEndpoint(dataflow, role)?
                 }
             };
 
@@ -134,13 +132,13 @@ impl AudioDuplicatorImpl {
         audio_client: &IAudioClient,
         share_mode: AUDCLNT_SHAREMODE,
     ) -> Result<(AudioFormat, u32), windows::core::Error> {
-        let mut mix_audio_format = AudioFormat::get_mix_format(&audio_client)?;
+        let mut mix_audio_format = AudioFormat::get_mix_format(audio_client)?;
 
         if mix_audio_format.audio_format_kind().is_some() {
             mix_audio_format.fix_sampling_rate_if_unsupported();
             mix_audio_format.fix_num_audio_channels_if_unsupported();
 
-            if mix_audio_format.is_supported_by_device(&audio_client, share_mode)? {
+            if mix_audio_format.is_supported_by_device(audio_client, share_mode)? {
                 return Ok((mix_audio_format, 0));
             }
         }
@@ -153,10 +151,10 @@ impl AudioDuplicatorImpl {
         Ok((opus_encoder_input_format, additional_flags))
     }
 
-    pub fn get_audio_data<'a>(
-        &'a self,
+    pub fn get_audio_data(
+        &self,
         wait_millis: u32,
-    ) -> Result<AudioDataWrapper<'a, AudioDuplicatorImpl>, AudioSourceError> {
+    ) -> Result<AudioDataWrapper<'_, AudioDuplicatorImpl>, AudioSourceError> {
         unsafe {
             match WaitForSingleObject(self.buffer_event, wait_millis) {
                 WAIT_OBJECT_0 => {
@@ -186,7 +184,7 @@ impl AudioDuplicatorImpl {
                     Ok(AudioDataWrapper::new(audio_data, self))
                 }
                 WAIT_TIMEOUT => Err(AudioSourceError::WaitTimeout),
-                _ => return Err(windows::core::Error::from_win32().into()), // Last error
+                _ => Err(windows::core::Error::from_win32().into()), // Last error
             }
         }
     }

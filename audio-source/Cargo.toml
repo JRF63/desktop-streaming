@@ -1,5 +1,5 @@
 [package]
-name = "audio-capturer"
+name = "audio-source"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -27,4 +27,4 @@ windows = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-rodio = "0.17.3"
+rodio = { workspace = true }

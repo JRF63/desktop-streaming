@@ -59,7 +59,7 @@ impl AudioFormat {
 
                     *wave_format = WAVEFORMATEX {
                         wFormatTag: WAVE_FORMAT_PCM as u16,
-                        nChannels: channels as u16,
+                        nChannels: channels,
                         nSamplesPerSec: sampling_rate,
                         nAvgBytesPerSec: avg_bytes_per_sec,
                         nBlockAlign: block_align as u16,
