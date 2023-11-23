@@ -75,7 +75,7 @@ impl<T, const N: usize> ConveyorBufferWriter<T, N> {
     }
 
     /// Returns the internal `ConveyorBuffer`.
-    /// 
+    ///
     /// This forwards to a call to `Arc::into_inner` and will return exactly one `ConveyorBuffer`
     /// for each channel.
     pub fn into_inner(self) -> Option<ConveyorBuffer<T, N>> {
@@ -159,7 +159,7 @@ impl<T, const N: usize> ConveyorBufferReader<T, N> {
     }
 
     /// Returns the internal `ConveyorBuffer`.
-    /// 
+    ///
     /// This forwards to a call to `Arc::into_inner` and will return exactly one `ConveyorBuffer`
     /// for each channel.
     pub fn into_inner(self) -> Option<ConveyorBuffer<T, N>> {
@@ -245,7 +245,7 @@ mod tests {
             let read_delays: Vec<_> = (0..ITERS)
                 .map(|_| Duration::from_micros(read_delay_between.sample(&mut rng)))
                 .collect();
-            
+
             s.spawn(move || {
                 for (i, sleep_dur) in write_delays.into_iter().enumerate() {
                     writer.write(|_, val| {

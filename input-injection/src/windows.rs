@@ -191,8 +191,14 @@ mod tests {
             (GamepadButtons::DPadRight, XInputState::arrow_right),
             (GamepadButtons::LeftShoulder, XInputState::left_shoulder),
             (GamepadButtons::RightShoulder, XInputState::right_shoulder),
-            (GamepadButtons::LeftThumbstick, XInputState::left_thumb_button),
-            (GamepadButtons::RightThumbstick, XInputState::right_thumb_button),
+            (
+                GamepadButtons::LeftThumbstick,
+                XInputState::left_thumb_button,
+            ),
+            (
+                GamepadButtons::RightThumbstick,
+                XInputState::right_thumb_button,
+            ),
         ];
         for (button, state_getter) in all_buttons {
             gamepad_info.SetButtons(button).unwrap();
