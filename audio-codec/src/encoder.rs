@@ -51,32 +51,6 @@ impl AudioEncoder {
         }
     }
 
-    pub fn set_bitrate(&mut self, bitrate: Bitrate) -> Result<(), Error> {
-        unsafe {
-            let error =
-                sys::opus_encoder_ctl(self.as_inner(), sys::OPUS_SET_BITRATE_REQUEST, bitrate.0);
-            match Error::from_raw_error_code(error) {
-                Some(e) => Err(e),
-                None => Ok(()),
-            }
-        }
-    }
-
-    pub fn get_bitrate(&mut self) -> Result<Bitrate, Error> {
-        unsafe {
-            let mut bitrate = MaybeUninit::uninit();
-            let error = sys::opus_encoder_ctl(
-                self.as_inner(),
-                sys::OPUS_GET_BITRATE_REQUEST,
-                bitrate.as_mut_ptr(),
-            );
-            match Error::from_raw_error_code(error) {
-                Some(e) => Err(e),
-                None => Ok(Bitrate(bitrate.assume_init())),
-            }
-        }
-    }
-
     pub unsafe fn encode_raw<T>(
         &mut self,
         input: *const T,
@@ -119,6 +93,67 @@ impl AudioEncoder {
         }
     }
 
+    pub fn set_bitrate(&mut self, bitrate: Bitrate) -> Result<(), Error> {
+        unsafe {
+            let error =
+                sys::opus_encoder_ctl(self.as_inner(), sys::OPUS_SET_BITRATE_REQUEST, bitrate.0);
+            match Error::from_raw_error_code(error) {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        }
+    }
+
+    /// Sets the expected packet loss of the encoder.
+    ///
+    /// Values of `percentage` outside the valid range of `0..=100` would result in
+    /// `Error::BadArg`.
+    ///
+    /// This function also enables the inband forward error correction if the loss percentage is
+    /// greater than zero and disables it otherwise.
+    pub fn set_fec_expected_packet_loss(&mut self, percentage: i32) -> Result<(), Error> {
+        unsafe {
+            let enable_fec = percentage > 0;
+
+            let error = sys::opus_encoder_ctl(
+                self.as_inner(),
+                sys::OPUS_SET_INBAND_FEC_REQUEST,
+                enable_fec as i32,
+            );
+            match Error::from_raw_error_code(error) {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }?;
+
+            let error = sys::opus_encoder_ctl(
+                self.as_inner(),
+                sys::OPUS_SET_PACKET_LOSS_PERC_REQUEST,
+                percentage,
+            );
+            match Error::from_raw_error_code(error) {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        }
+    }
+
+    /// Configures the encoder's computational complexity.
+    /// 
+    /// Values of `complexity` outside the valid range of `0..=10` would result in `Error::BadArg`.
+    pub fn set_encoder_complexity(&mut self, complexity: i32) -> Result<(), Error> {
+        unsafe {
+            let error = sys::opus_encoder_ctl(
+                self.as_inner(),
+                sys::OPUS_SET_COMPLEXITY_REQUEST,
+                complexity,
+            );
+            match Error::from_raw_error_code(error) {
+                Some(e) => Err(e),
+                None => Ok(()),
+            }
+        }
+    }
+
     fn as_inner(&self) -> *mut sys::OpusEncoder {
         self.inner.as_ptr()
     }
@@ -131,7 +166,7 @@ mod tests {
     #[test]
     fn audio_encoder_set_bitrate_test() {
         let mut audio_encoder = AudioEncoder::new(
-            SampleRate::Hz48000,
+            SampleRate::Fullband,
             AudioChannels::Stereo,
             ApplicationMode::LowDelay,
         )
@@ -139,5 +174,35 @@ mod tests {
         audio_encoder
             .set_bitrate(Bitrate::new(256000).unwrap())
             .unwrap();
+    }
+
+    #[test]
+    fn audio_encoder_set_fec_expected_packet_loss() {
+        let mut audio_encoder = AudioEncoder::new(
+            SampleRate::Fullband,
+            AudioChannels::Stereo,
+            ApplicationMode::LowDelay,
+        )
+        .unwrap();
+
+        audio_encoder.set_fec_expected_packet_loss(0).unwrap();
+        audio_encoder.set_fec_expected_packet_loss(100).unwrap();
+        assert!(audio_encoder.set_fec_expected_packet_loss(-1).is_err());
+        assert!(audio_encoder.set_fec_expected_packet_loss(101).is_err());
+    }
+
+    #[test]
+    fn audio_encoder_set_encoder_complexity() {
+        let mut audio_encoder = AudioEncoder::new(
+            SampleRate::Fullband,
+            AudioChannels::Stereo,
+            ApplicationMode::LowDelay,
+        )
+        .unwrap();
+
+        audio_encoder.set_encoder_complexity(0).unwrap();
+        audio_encoder.set_encoder_complexity(10).unwrap();
+        assert!(audio_encoder.set_encoder_complexity(-1).is_err());
+        assert!(audio_encoder.set_encoder_complexity(11).is_err());
     }
 }

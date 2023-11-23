@@ -1,14 +1,21 @@
 use crate::sys;
 
 /// Sampling rate (Hz).
+/// 
+// Sample rate naming: https://developer.mozilla.org/en-US/docs/Web/Media/Formats/Audio_codecs#opus
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum SampleRate {
-    Hz8000 = 8000,
-    Hz12000 = 12000,
-    Hz16000 = 16000,
-    Hz24000 = 24000,
-    Hz48000 = 48000,
+    /// 8 kHz
+    Narrowband = 8000,
+    /// 12 kHz
+    MediumBand = 12000,
+    /// 16 kHz
+    Wideband = 16000,
+    /// 24 kHz
+    SuperWideband = 24000,
+    /// 48 kHz
+    Fullband = 48000,
 }
 
 /// Number of audio channels.
@@ -22,7 +29,7 @@ pub enum AudioChannels {
 impl AudioChannels {
     /// Calculate the number of frames per channel from the total number of frames.
     #[inline]
-    pub fn num_frames_per_channel(self, num_frames: i32) -> i32 {
+    pub const fn num_frames_per_channel(self, num_frames: i32) -> i32 {
         // Produces better assembly than just plain division
         num_frames >> (self as i32 - 1)
     }
@@ -52,7 +59,7 @@ impl Bitrate {
     pub const MAX: Bitrate = Bitrate(sys::OPUS_BITRATE_MAX);
 
     /// Create a new `Bitrate`. Valid bitrate range is from 500 to 512000 bits per second.
-    pub fn new(bitrate: i32) -> Option<Self> {
+    pub const fn new(bitrate: i32) -> Option<Self> {
         const MIN_BITRATE: i32 = 500;
         const MAX_BITRATE: i32 = 512000;
 
