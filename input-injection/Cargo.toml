@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = ["developer_mode_enabled"]
+developer_mode_enabled = []
+
 [dependencies]
 bitflags = { workspace = true }
 tracing = { workspace = true }

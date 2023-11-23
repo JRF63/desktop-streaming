@@ -54,18 +54,18 @@ impl InputInjector {
         Ok(input_injector)
     }
 
-    pub fn initialize_gamepad(&mut self) -> Result<(), windows::core::Error> {
+    fn initialize_gamepad(&mut self) -> Result<(), windows::core::Error> {
         self.initialized_devices |= InputDevices::Gamepad;
         self.inner.InitializeGamepadInjection()
     }
 
-    pub fn initialize_pen(&mut self) -> Result<(), windows::core::Error> {
+    fn initialize_pen(&mut self) -> Result<(), windows::core::Error> {
         self.initialized_devices |= InputDevices::Pen;
         self.inner
             .InitializePenInjection(InjectedInputVisualizationMode::None)
     }
 
-    pub fn initialize_touch(&mut self) -> Result<(), windows::core::Error> {
+    fn initialize_touch(&mut self) -> Result<(), windows::core::Error> {
         self.initialized_devices |= InputDevices::Touch;
         self.inner
             .InitializeTouchInjection(InjectedInputVisualizationMode::None)
@@ -81,6 +81,7 @@ bitflags! {
     }
 }
 
+#[cfg(feature = "developer_mode_enabled")]
 #[cfg(test)]
 mod tests {
     //! Tests requires developer mode and admin priviledges. Outside of tests, the user of the
