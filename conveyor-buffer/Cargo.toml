@@ -9,4 +9,4 @@ license.workspace = true
 crossbeam-utils = "0.8.16" # For `crossbeam_utils::CachePadded`
 
 [dev-dependencies]
-rand = "0.8.5"
+rand = { workspace = true }
