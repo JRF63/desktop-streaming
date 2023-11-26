@@ -11,6 +11,7 @@ members = [
     "audio-source",
     "conveyor-buffer",
     "input-injection",
+    "video-source",
     "windows-util",
 ]
 exclude = ["windows-reexport"]
