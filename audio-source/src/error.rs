@@ -1,6 +1,6 @@
 /// Errors that can be returned by an audio source.
 #[derive(thiserror::Error, Debug)]
-pub enum AudioSourceError {
+pub enum Error {
     #[error(
         "Audio device was removed or disabled. \
         The caller is suggested to create a new audio source to handle this error."

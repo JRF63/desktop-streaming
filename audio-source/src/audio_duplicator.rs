@@ -1,6 +1,6 @@
 use crate::{
     audio_data::{AudioDataWrapper, AudioFormatKind},
-    error::AudioSourceError,
+    error::Error,
 };
 
 #[cfg(windows)]
@@ -12,7 +12,7 @@ pub struct AudioDuplicator(AudioDuplicatorImpl);
 impl AudioDuplicator {
     /// Create a new `AudioDuplicator`. Passing `None` via the `device_id` will produce the default
     /// audio rendering device, otherwise it will use the device specified by the string.
-    pub fn new(device_id: Option<String>) -> Result<Self, AudioSourceError> {
+    pub fn new(device_id: Option<String>) -> Result<Self, Error> {
         AudioDuplicatorImpl::new(device_id).map(Self)
     }
 
@@ -23,9 +23,9 @@ impl AudioDuplicator {
     /// elapses before the next audio data is ready.
     pub fn get_audio_data(
         &self,
-        wait_millis: u32,
-    ) -> Result<AudioDataWrapper<'_, AudioDuplicatorImpl>, AudioSourceError> {
-        self.0.get_audio_data(wait_millis)
+        timeout_millis: u32,
+    ) -> Result<AudioDataWrapper<'_, AudioDuplicatorImpl>, Error> {
+        self.0.get_audio_data(timeout_millis)
     }
 
     /// Returns a `&str` that is used to identify the current audio device.
