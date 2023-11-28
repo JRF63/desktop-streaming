@@ -7,7 +7,7 @@ use std::{mem::MaybeUninit, ptr::NonNull};
 use windows::{
     core::HSTRING,
     Win32::{
-        Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT},
+        Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT},
         Media::Audio::{
             eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
             MMDeviceEnumerator, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_SHAREMODE,
@@ -28,6 +28,19 @@ pub struct AudioDuplicatorImpl {
     audio_format: AudioFormat,
     audio_format_kind: AudioFormatKind,
     device_id: String,
+}
+
+impl Drop for AudioDuplicatorImpl {
+    fn drop(&mut self) {
+        unsafe {
+            if let Err(e) = CloseHandle(self.buffer_event) {
+                tracing::error!("CloseHandle error: {}", e);
+
+                #[cfg(test)]
+                panic!("CloseHandle error: {}", e);
+            }
+        }
+    }
 }
 
 impl AudioDuplicatorImpl {
