@@ -14,7 +14,6 @@ members = [
     "video-source",
     "windows-util",
 ]
-exclude = ["windows-reexport"]
 
 [workspace.dependencies]
 approx = "0.5.1"
@@ -25,4 +24,4 @@ serde = "1.0.192"
 thiserror = "1.0.50"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
-windows = { package = "windows-reexport", path = "windows-reexport" } # version = "0.52.0"
+windows = "0.52.0"

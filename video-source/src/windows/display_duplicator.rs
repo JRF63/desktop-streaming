@@ -127,7 +127,10 @@ impl DisplayDuplicatorImpl {
     ) -> Result<ID3D11Device, windows::core::Error> {
         let device = unsafe {
             let driver_type = D3D_DRIVER_TYPE_HARDWARE;
+
+            // `Direct3D11::D3D11_CREATE_DEVICE_DEBUG` is no longer easily available
             let flags = Direct3D11::D3D11_CREATE_DEVICE_FLAG(0);
+
             let feature_levels = [
                 Direct3D::D3D_FEATURE_LEVEL_12_2,
                 Direct3D::D3D_FEATURE_LEVEL_12_1,
@@ -201,12 +204,17 @@ impl<'a> AcquiredFrame<'a> {
 
 impl From<windows::core::Error> for Error {
     fn from(value: windows::core::Error) -> Self {
-        tracing::error!("{}", value);
-
         match value.code() {
+            // Wait timeout will just flood the logs
             DXGI_ERROR_WAIT_TIMEOUT => Error::WaitTimeout,
-            DXGI_ERROR_ACCESS_LOST => Error::AccessLost,
-            _ => Error::InternalError,
+
+            not_timeout => {
+                tracing::error!("{}", value);
+                match not_timeout {
+                    DXGI_ERROR_ACCESS_LOST => Error::AccessLost,
+                    _ => Error::InternalError,
+                }
+            }
         }
     }
 }
