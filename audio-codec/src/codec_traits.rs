@@ -23,8 +23,8 @@ pub trait Decodeable {
     ) -> ::std::os::raw::c_int;
 }
 
-macro_rules! impl_encodeable {
-    ($t:ty, $func:expr) => {
+macro_rules! impl_codec_traits {
+    ($t:ty, $encode_fn:expr, $decode_fn:expr) => {
         impl Encodeable for $t {
             #[inline]
             unsafe fn encode(
@@ -34,17 +34,10 @@ macro_rules! impl_encodeable {
                 output: *mut std::os::raw::c_uchar,
                 max_output_bytes: i32,
             ) -> i32 {
-                $func(st, input, num_frames, output, max_output_bytes)
+                $encode_fn(st, input, num_frames, output, max_output_bytes)
             }
         }
-    };
-}
 
-impl_encodeable!(i16, sys::opus_encode);
-impl_encodeable!(f32, sys::opus_encode_float);
-
-macro_rules! impl_decodeable {
-    ($t:ty, $func:expr) => {
         impl Decodeable for $t {
             #[inline]
             unsafe fn decode(
@@ -55,7 +48,7 @@ macro_rules! impl_decodeable {
                 max_num_frames: ::std::os::raw::c_int,
                 decode_fec: ::std::os::raw::c_int,
             ) -> ::std::os::raw::c_int {
-                $func(
+                $decode_fn(
                     st,
                     input,
                     input_num_bytes,
@@ -68,5 +61,5 @@ macro_rules! impl_decodeable {
     };
 }
 
-impl_decodeable!(i16, sys::opus_decode);
-impl_decodeable!(f32, sys::opus_decode_float);
+impl_codec_traits!(i16, sys::opus_encode, sys::opus_decode);
+impl_codec_traits!(f32, sys::opus_encode_float, sys::opus_decode_float);
