@@ -1,39 +1,23 @@
-use bitflags::bitflags;
 use windows::UI::Input::Preview::Injection::{self, InjectedInputVisualizationMode};
 
 pub struct InputInjector {
     inner: Injection::InputInjector,
-    initialized_devices: InputDevices,
 }
 
 impl Drop for InputInjector {
     fn drop(&mut self) {
-        let array: [(
-            InputDevices,
-            fn(&Injection::InputInjector) -> Result<(), windows::core::Error>,
-        ); 3] = [
-            (
-                InputDevices::Gamepad,
-                Injection::InputInjector::UninitializeGamepadInjection,
-            ),
-            (
-                InputDevices::Pen,
-                Injection::InputInjector::UninitializePenInjection,
-            ),
-            (
-                InputDevices::Touch,
-                Injection::InputInjector::UninitializeTouchInjection,
-            ),
+        let array: [fn(&Injection::InputInjector) -> Result<(), windows::core::Error>; 3] = [
+            Injection::InputInjector::UninitializeGamepadInjection,
+            Injection::InputInjector::UninitializePenInjection,
+            Injection::InputInjector::UninitializeTouchInjection,
         ];
 
-        for (device, uninit) in array {
-            if self.initialized_devices.contains(device) {
-                if let Err(e) = uninit(&self.inner) {
-                    tracing::error!("InputInjector error: {}", e);
+        for uninit in array {
+            if let Err(e) = uninit(&self.inner) {
+                tracing::error!("InputInjector error: {}", e);
 
-                    #[cfg(test)]
-                    panic!("InputInjector error: {}", e);
-                }
+                #[cfg(test)]
+                panic!("InputInjector error: {}", e);
             }
         }
     }
@@ -41,43 +25,15 @@ impl Drop for InputInjector {
 
 impl InputInjector {
     pub fn new() -> Result<Self, windows::core::Error> {
-        let mut input_injector = Self {
-            inner: Injection::InputInjector::TryCreate()?,
-            initialized_devices: InputDevices::empty(),
-        };
+        let inner = Injection::InputInjector::TryCreate()?;
 
         // TODO: Maybe don't initialize everything?
-        input_injector.initialize_gamepad()?;
-        input_injector.initialize_pen()?;
-        input_injector.initialize_touch()?;
+        let visualization_mode = InjectedInputVisualizationMode::None;
+        inner.InitializeGamepadInjection()?;
+        inner.InitializePenInjection(visualization_mode)?;
+        inner.InitializeTouchInjection(visualization_mode)?;
 
-        Ok(input_injector)
-    }
-
-    fn initialize_gamepad(&mut self) -> Result<(), windows::core::Error> {
-        self.initialized_devices |= InputDevices::Gamepad;
-        self.inner.InitializeGamepadInjection()
-    }
-
-    fn initialize_pen(&mut self) -> Result<(), windows::core::Error> {
-        self.initialized_devices |= InputDevices::Pen;
-        self.inner
-            .InitializePenInjection(InjectedInputVisualizationMode::None)
-    }
-
-    fn initialize_touch(&mut self) -> Result<(), windows::core::Error> {
-        self.initialized_devices |= InputDevices::Touch;
-        self.inner
-            .InitializeTouchInjection(InjectedInputVisualizationMode::None)
-    }
-}
-
-bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    struct InputDevices: u8 {
-        const Gamepad = 1;
-        const Pen = 2;
-        const Touch = 3;
+        Ok(Self { inner })
     }
 }
 
@@ -87,7 +43,7 @@ mod tests {
     //! Tests requires developer mode and admin priviledges. Outside of tests, the user of the
     //! library needs to have a [manifest][manifest_link].
     //!
-    //! [manifest_link]: https://github.com/microsoft/windows-rs/blob/master/crates/samples/windows/core_app/register.cmd
+    //! [manifest_link]: https://github.com/microsoft/windows-rs/blob/7219668f80a459b47097bc524af304073c69ec4b/crates/samples/windows/core_app/register.cmd
 
     use super::*;
     use approx::assert_relative_eq;

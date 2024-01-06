@@ -1,5 +1,5 @@
 [package]
-name = "input-injection"
+name = "inputs"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,7 +10,7 @@ default = ["developer_mode_enabled"]
 developer_mode_enabled = []
 
 [dependencies]
-bitflags = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

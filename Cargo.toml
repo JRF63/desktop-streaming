@@ -10,14 +10,13 @@ members = [
     "audio-codec",
     "audio-source",
     "conveyor-buffer",
-    "input-injection",
+    "inputs",
     "video-source",
     "windows-util",
 ]
 
 [workspace.dependencies]
 approx = "0.5.1"
-bitflags = "2.4.1"
 rand = "0.8.5"
 rodio = "0.17.3"
 serde = "1.0.192"
