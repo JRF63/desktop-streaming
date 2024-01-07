@@ -1,0 +1,20 @@
+[package]
+name = "webrtc-bridge"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+exp-golomb = { workspace = true }
+log = "0.4.17"
+serde = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+webrtc = { workspace = true }
+
+[dev-dependencies]
+serde_json = "1.0.91"
+env_logger = "0.10.0"

@@ -138,7 +138,7 @@ impl AudioEncoder {
     }
 
     /// Configures the encoder's computational complexity.
-    /// 
+    ///
     /// Values of `complexity` outside the valid range of `0..=10` would result in `Error::BadArg`.
     pub fn set_encoder_complexity(&mut self, complexity: i32) -> Result<(), Error> {
         unsafe {
@@ -171,7 +171,7 @@ mod tests {
             ApplicationMode::LowDelay,
         )
         .unwrap();
-    
+
         audio_encoder
             .set_bitrate(Bitrate::new(256000).unwrap())
             .unwrap();

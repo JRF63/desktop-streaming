@@ -12,15 +12,22 @@ members = [
     "conveyor-buffer",
     "inputs",
     "video-source",
+    "webrtc-bridge",
     "windows-util",
 ]
 
 [workspace.dependencies]
 approx = "0.5.1"
+async-trait = "0.1.57"
+base64 = "0.21.5"
+bytes = "1.5.0"
+exp-golomb = "0.1.0"
 rand = "0.8.5"
 rodio = "0.17.3"
 serde = "1.0.192"
 thiserror = "1.0.50"
+tokio = { version = "1.35.1", features = ["full"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
+webrtc = "0.9.0"
 windows = "0.52.0"

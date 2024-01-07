@@ -1,3 +1,3 @@
 mod display_duplicator;
 
-pub use display_duplicator::{DisplayDuplicatorImpl, AcquiredFrame};
+pub use display_duplicator::{AcquiredFrame, DisplayDuplicatorImpl};

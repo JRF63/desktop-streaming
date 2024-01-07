@@ -1,7 +1,7 @@
 use crate::sys;
 
 /// Sampling rate (Hz).
-/// 
+///
 // Sample rate naming: https://developer.mozilla.org/en-US/docs/Web/Media/Formats/Audio_codecs#opus
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]

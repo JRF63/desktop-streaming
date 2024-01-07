@@ -18,7 +18,7 @@ mod test {
         rngs::StdRng,
         SeedableRng,
     };
-    
+
     #[test]
     fn audio_codec_encode_decode_white_noise() {
         fn build_white_noise_samples(num_frames: usize, phase_shift: usize) -> Vec<f32> {
@@ -89,7 +89,7 @@ mod test {
         #[cfg(feature = "has_audio_output_device")]
         {
             use rodio::{buffer::SamplesBuffer, OutputStream};
-            
+
             // This should play white noise that appears to move from left to right
             let buffer = SamplesBuffer::new(NUM_CHANNELS as _, SAMPLE_RATE as _, decoded);
             let (_stream, stream_handle) = OutputStream::try_default().unwrap();

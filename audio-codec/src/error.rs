@@ -24,7 +24,7 @@ pub enum Error {
 impl Error {
     /// Converts an error code to an `Error`. Returns `None` if the error code is not an error
     /// (`0`).
-    /// 
+    ///
     /// # Safety
     /// This function _can_ only accept error codes in the range `(-7)..0` and passing an error
     /// code outside the range is undefined behavior.
