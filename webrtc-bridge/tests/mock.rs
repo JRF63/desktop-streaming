@@ -10,7 +10,6 @@ use webrtc_bridge::peer::{Role, WebRtcBuilder};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn mock_test() {
-    env_logger::init();
     let (encoder_signaler, decoder_signaler) = MockSignaler::channel();
 
     let stop_1 = Arc::new(Notify::new());
