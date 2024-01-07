@@ -1,10 +1,6 @@
 use bytes::Bytes;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
-use tokio::time::timeout;
 use webrtc::rtp;
-
-const MAX_MTU: usize = 1500;
-const READ_TIMEOUT: Duration = Duration::from_millis(5000);
 
 #[cfg(not(test))]
 type TrackRemote = webrtc::track::track_remote::TrackRemote;
@@ -12,41 +8,79 @@ type TrackRemote = webrtc::track::track_remote::TrackRemote;
 #[cfg(test)]
 type TrackRemote = tests::DummyTrackRemote;
 
-#[derive(Debug)]
+// TODO: Convert to `thiserror`
+#[derive(Debug, PartialEq)]
 pub enum ReorderBufferError {
-    HeaderParsingError,
-    TrackRemoteReadTimeout,
-    TrackRemoteReadError,
-    PacketTooShort,
+    ReadTimeout,
+    ReadError,
+    UnorderablePacket,
     BufferFull,
-    UnorderablePacketReceived,
 }
 
+/// A `TrackRemote` that returns RTP packets in-order.
 pub struct BufferedTrackRemote {
     track: Arc<TrackRemote>,
     expected_seq_num: Option<SequenceNumber>,
     packets: BTreeMap<SequenceNumber, rtp::packet::Packet>,
+    read_buffer: Vec<u8>,
+    read_timeout: Duration,
+    max_unordered_packets: usize,
 }
 
 impl BufferedTrackRemote {
-    pub fn new(track: Arc<TrackRemote>, _buffer_size: usize) -> BufferedTrackRemote {
+    /// Create a `BufferedTrackRemote`.
+    ///
+    /// - The `TrackRemote` that will be provided with reordering capabilities should be passed to
+    /// `track`.
+    /// - `initial_seq_num` is the initial sequence number of the RTP stream. If `None`, the
+    /// initial sequence number will be set to the sequence number of the first received RTP
+    /// packet.
+    /// - `read_buffer_size` should be set to the expected size in bytes of a received packet. This
+    /// is typically >= to the MTU of 1500 bytes.
+    /// - `recv` will return `ReorderBufferError::ReadTimeout` if no packets are received within
+    /// `read_timeout_millis` milliseconds.
+    /// - if the buffer is unable to reorder more than `max_unordered_packets`, `recv` will return
+    /// `ReorderBufferError::BufferFull`.
+    pub fn new(
+        track: Arc<TrackRemote>,
+        initial_seq_num: Option<u16>,
+        read_buffer_size: usize,
+        read_timeout_millis: u64,
+        max_unordered_packets: usize,
+    ) -> BufferedTrackRemote {
         BufferedTrackRemote {
             track,
-            expected_seq_num: None,
+            expected_seq_num: initial_seq_num.map(SequenceNumber::new),
             packets: BTreeMap::new(),
+            read_buffer: vec![0u8; read_buffer_size],
+            read_timeout: Duration::from_millis(read_timeout_millis),
+            max_unordered_packets,
         }
     }
 
+    // TODO: The `#[cold]` annotations here were not tested to produce better code.
+
     #[cold]
-    fn track_read_timeout(&self) -> Result<(Bytes, u32), ReorderBufferError> {
-        Err(ReorderBufferError::TrackRemoteReadTimeout)
+    fn read_timeout(&self) -> Result<(Bytes, u32), ReorderBufferError> {
+        Err(ReorderBufferError::ReadTimeout)
     }
 
     #[cold]
-    fn track_read_error(&self) -> Result<(Bytes, u32), ReorderBufferError> {
-        Err(ReorderBufferError::TrackRemoteReadError)
+    fn read_error(&self) -> Result<(Bytes, u32), ReorderBufferError> {
+        Err(ReorderBufferError::ReadError)
     }
 
+    #[cold]
+    fn unorderable_packet(&self) -> Result<(Bytes, u32), ReorderBufferError> {
+        Err(ReorderBufferError::UnorderablePacket)
+    }
+
+    #[cold]
+    fn buffer_full(&self) -> Result<(Bytes, u32), ReorderBufferError> {
+        Err(ReorderBufferError::BufferFull)
+    }
+
+    /// Get the RTP payload in-order.
     #[inline]
     pub async fn recv(&mut self) -> Result<(Bytes, u32), ReorderBufferError> {
         loop {
@@ -64,18 +98,19 @@ impl BufferedTrackRemote {
                 }
             }
 
-            let mut scratch = [0u8; MAX_MTU];
+            let track_read =
+                tokio::time::timeout(self.read_timeout, self.track.read(&mut self.read_buffer))
+                    .await;
 
-            let track_read = timeout(READ_TIMEOUT, self.track.read(&mut scratch)).await;
             match track_read {
                 Err(_) => {
-                    return self.track_read_timeout();
+                    return self.read_timeout();
                 }
                 Ok(Err(_)) => {
-                    return self.track_read_error();
+                    return self.read_error();
                 }
                 Ok(Ok((packet, _))) => {
-                    let seq_num = SequenceNumber(packet.header.sequence_number);
+                    let seq_num = SequenceNumber::new(packet.header.sequence_number);
 
                     let expected_seq_num = match self.expected_seq_num.as_mut() {
                         Some(expected_seq_num) => expected_seq_num,
@@ -93,7 +128,7 @@ impl BufferedTrackRemote {
                         }
 
                         std::cmp::Ordering::Less => {
-                            return Err(ReorderBufferError::UnorderablePacketReceived)
+                            return self.unorderable_packet();
                         }
 
                         // Either:
@@ -104,6 +139,11 @@ impl BufferedTrackRemote {
                         _ => {
                             // Discard old packet that has the same sequence number if it exists
                             let _ = self.packets.insert(seq_num, packet);
+
+                            if self.packets.len() > self.max_unordered_packets {
+                                return self.buffer_full();
+                            }
+
                             continue;
                         }
                     }
@@ -118,6 +158,10 @@ impl BufferedTrackRemote {
 struct SequenceNumber(u16);
 
 impl SequenceNumber {
+    const fn new(seq_num: u16) -> Self {
+        Self(seq_num)
+    }
+
     #[inline]
     fn next(&self) -> SequenceNumber {
         SequenceNumber(self.0.wrapping_add(1))
@@ -166,10 +210,16 @@ impl Ord for SequenceNumber {
 mod tests {
     use super::*;
     use bytes::{Buf, BufMut, BytesMut};
+    use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
     use std::{collections::VecDeque, sync::Mutex};
     use webrtc::interceptor::Attributes;
 
-    const NUM_PACKETS_TO_BUFFER: usize = 128;
+    const MAX_MTU: usize = 1500;
+    const READ_TIMEOUT_MILLIS: u64 = 5000;
+
+    const LARGE_WINDOW: usize = 128;
+    const SEQ_NUM_START: u16 = 65500;
+    const NUM_PACKETS: u16 = 10000;
 
     pub struct DummyTrackRemote {
         packets: Mutex<VecDeque<rtp::packet::Packet>>,
@@ -196,22 +246,28 @@ mod tests {
     }
 
     #[test]
-    fn sequence_number_sort() {
-        const START: u16 = 65500;
-        const N: u16 = 10000;
-        let mut seq_nums: Vec<_> = (0..N)
-            .map(|offset| SequenceNumber(START.wrapping_add(offset)))
+    fn sequence_number_sort_test() {
+        let mut seq_nums: Vec<_> = (0..NUM_PACKETS)
+            .map(|offset| SequenceNumber(SEQ_NUM_START.wrapping_add(offset)))
             .collect();
         seq_nums.reverse();
         seq_nums.sort();
 
-        for (offset, seq_num) in (0..N).zip(&seq_nums) {
-            let val = START.wrapping_add(offset);
+        for (offset, seq_num) in (0..NUM_PACKETS).zip(&seq_nums) {
+            let val = SEQ_NUM_START.wrapping_add(offset);
             assert_eq!(val, seq_num.0);
         }
     }
 
-    async fn reorder_buffer_test(mut seq_nums: Vec<SequenceNumber>) {
+    async fn reorder_buffer_test<F: FnMut(&mut Vec<SequenceNumber>)>(
+        mut f: F,
+    ) -> Result<(), ReorderBufferError> {
+        let mut seq_nums: Vec<_> = (0..NUM_PACKETS)
+            .map(|offset| SequenceNumber(SEQ_NUM_START.wrapping_add(offset)))
+            .collect();
+
+        f(&mut seq_nums);
+
         let packets: VecDeque<_> = seq_nums
             .iter()
             .map(|seq_num| {
@@ -230,54 +286,92 @@ mod tests {
         seq_nums.sort();
 
         let track = DummyTrackRemote::new(packets.clone());
-        let mut buffered_track = BufferedTrackRemote::new(Arc::new(track), NUM_PACKETS_TO_BUFFER);
+        let mut buffered_track = BufferedTrackRemote::new(
+            Arc::new(track),
+            None,
+            MAX_MTU,
+            READ_TIMEOUT_MILLIS,
+            LARGE_WINDOW,
+        );
 
         let saved_packets_len = buffered_track.packets.len();
 
         for seq_num in seq_nums {
-            let (mut b, _) = buffered_track.recv().await.unwrap();
+            let (mut b, _) = buffered_track.recv().await?;
             assert_eq!(seq_num.0, b.get_u16());
         }
 
         assert_eq!(buffered_track.packets.len(), saved_packets_len);
+
+        Ok(())
     }
 
     #[tokio::test]
     async fn reorder_buffer_inorder_test() {
-        const START: u16 = 65500;
-        const N: u16 = 10000;
-        let seq_nums: Vec<_> = (0..N)
-            .map(|offset| SequenceNumber(START.wrapping_add(offset)))
-            .collect();
-        reorder_buffer_test(seq_nums).await;
+        reorder_buffer_test(|_| {}).await.unwrap();
     }
 
     #[tokio::test]
     async fn reorder_buffer_simple_out_of_order_test() {
-        const START: u16 = 65500;
-        const N: u16 = 10000;
-        let mut seq_nums: Vec<_> = (0..N)
-            .map(|offset| SequenceNumber(START.wrapping_add(offset)))
-            .collect();
+        reorder_buffer_test(|seq_nums| {
+            // Reorder buffer assumes that the first packet is really the initial packet, so this
+            // does not touch index 0
+            for i in (2..seq_nums.len()).step_by(2) {
+                seq_nums.swap(i, i - 1);
+            }
+        })
+        .await
+        .unwrap();
+    }
 
-        // Scramble seq_nums, leaving index 0 alone
-        for i in (2..seq_nums.len()).step_by(2) {
-            seq_nums.swap(i, i - 1);
-        }
+    #[tokio::test]
+    async fn reorder_buffer_randomized_test() {
+        let mut rng = StdRng::seed_from_u64(0);
 
-        reorder_buffer_test(seq_nums).await;
+        reorder_buffer_test(|seq_nums| {
+            // Randomize seq_nums, leaving index 0 alone
+            const N: usize = LARGE_WINDOW;
+            for start in (1..seq_nums.len()).step_by(N) {
+                let end = usize::min(start + N, seq_nums.len());
+                seq_nums[start..end].shuffle(&mut rng);
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reorder_buffer_unorderable_test() {
+        assert_eq!(
+            reorder_buffer_test(|seq_nums| {
+                // - `SEQ_NUM_START` received
+                // - Expecting `SEQ_NUM_START + 1`
+                // - Received `SEQ_NUM_START` which should come earlier than `SEQ_NUM_START + 1`
+                // - return `ReorderBufferError::UnorderablePacket`
+                seq_nums[1] = SequenceNumber::new(SEQ_NUM_START);
+            })
+            .await,
+            Err(ReorderBufferError::UnorderablePacket)
+        );
     }
 
     #[tokio::test]
     async fn reorder_buffer_large_window() {
-        const START: u16 = 65500;
-        const N: u16 = 10000;
-        let mut seq_nums: Vec<_> = (0..N)
-            .map(|offset| SequenceNumber(START.wrapping_add(offset)))
-            .collect();
+        reorder_buffer_test(|seq_nums| {
+            seq_nums.swap(1, LARGE_WINDOW as usize);
+        })
+        .await
+        .unwrap();
+    }
 
-        seq_nums.swap(1, NUM_PACKETS_TO_BUFFER as usize);
-
-        reorder_buffer_test(seq_nums).await;
+    #[tokio::test]
+    async fn reorder_buffer_full_test() {
+        assert_eq!(
+            reorder_buffer_test(|seq_nums| {
+                seq_nums.swap(1, (LARGE_WINDOW + 1) as usize);
+            })
+            .await,
+            Err(ReorderBufferError::BufferFull)
+        );
     }
 }
